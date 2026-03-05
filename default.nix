@@ -306,6 +306,7 @@ let
         (allow mach-lookup (global-name "com.apple.SecurityServer"))
         (allow mach-lookup (global-name "com.apple.trustd.agent"))
         (allow mach-lookup (global-name "com.apple.FSEvents"))
+        (allow mach-lookup (global-name "com.apple.diagnosticd"))
         (allow mach-register)
         (allow ipc-posix-shm-read-data)
         (allow ipc-posix-shm-write-data)
@@ -313,6 +314,7 @@ let
 
         ;; Network
         (allow network*)
+        (allow system-socket)
 
         ;; Device nodes & terminal I/O
         (allow file-read*
@@ -320,7 +322,8 @@ let
           (literal "/dev/urandom")
           (literal "/dev/random")
           (literal "/dev/zero")
-          (literal "/dev/ptmx"))
+          (literal "/dev/ptmx")
+          (literal "/private/var/select/sh"))
         (allow file-write* (literal "/dev/null"))
         (allow file-read* file-write*
           (literal "/dev/tty")
@@ -340,7 +343,9 @@ let
         ;; System libraries & frameworks
         (allow file-read*
           (subpath "/usr/lib")
+          (subpath "/usr/bin")
           (subpath "/usr/share")
+          (subpath "/bin")
           (subpath "/System")
           (subpath "/Library/Preferences"))
 
@@ -349,18 +354,18 @@ let
 
         ;; DNS, TLS & name resolution
         (allow file-read*
-          (literal "/etc/resolv.conf")
           (literal "/private/etc/resolv.conf")
           (literal "/private/var/run/resolv.conf")
-          (subpath "/etc/ssl")
           (subpath "/private/etc/ssl")
-          (literal "/etc/passwd")
-          (literal "/private/etc/passwd"))
+          (literal "/private/etc/passwd")
+          (literal "/private/etc/localtime")
+          (subpath "/private/etc/static")
+          (literal "/private/etc/hosts"))
 
         ;; Security framework — system keychains & trust databases
-        (allow file-read*
-          (subpath "/Library/Keychains")
+        (allow file-read* 
           (subpath "/private/var/db/mds")
+          (subpath "/Library/Keychains")
           (literal "/private/var/run/systemkeychaincheck.done"))
 
         ;; Temp directories
@@ -370,15 +375,16 @@ let
           (subpath (param "TMPDIR"))
           (subpath "/private/var/folders"))
 
-        ;; Timezone
-        (allow file-read* (subpath "/private/var/db/timezone"))
-
         ;; Filesystem traversal — stat() on parent dirs for path resolution
         (allow file-read*
           (literal "/")
           (literal "/var")
+          (literal "/dev")
           (literal "/private")
           (literal "/private/var")
+          (literal "/etc")
+          (literal "/private/etc")
+          (literal "/private/var/db")
           (literal "/Users")
           (literal (param "HOME"))
           (literal (param "REPO_ROOT_PARENT")))
@@ -388,6 +394,9 @@ let
         (allow file-read* file-write* (subpath (param "REPO_ROOT")))
         (allow file-read* file-write* (subpath (param "GIT_DIR")))
         (allow file-read* (subpath (param "GIT_CONFIG_DIR")))
+
+        ;; Timezone
+        (allow file-read* (subpath "/private/var/db/timezone"))
 
         ;; Explicit state directories & files
         ${seatbeltAllowReadWrite}
