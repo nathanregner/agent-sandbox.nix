@@ -78,7 +78,7 @@ let
       bindFilesStr = builtins.concatStringsSep " "
         (map (file: ''--bind "${file}" "${file}"'') stateFiles);
       extraEnvStr = builtins.concatStringsSep " "
-        (map (name: ''--setenv ${name} "${extraEnv.${name}}"'')
+        (map (name: "--setenv ${name} ${builtins.toJSON extraEnv.${name}}")
           (builtins.attrNames extraEnv));
     in pkgs.writeShellScriptBin outName ''
       CWD=$(pwd)
@@ -92,8 +92,7 @@ let
         --ro-bind /nix /nix \
         --ro-bind /etc/passwd /etc/passwd \
         --ro-bind /etc/resolv.conf /etc/resolv.conf \
-        --ro-bind /etc/ssl/certs /etc/ssl/certs \
-        --ro-bind-try /etc/ssl /etc/ssl \
+        --ro-bind-try /etc/ssl/certs /etc/ssl/certs \
         --ro-bind-try /etc/static /etc/static \
         --ro-bind-try /etc/pki /etc/pki \
         --proc /proc \
@@ -267,9 +266,9 @@ let
       }) (builtins.length stateFiles);
 
       # For the .sb file
-      seatbeltAllowReadWrite = builtins.concatStringsSep "\n" (map
-        (p: ''(allow file-read* file-write* (subpath (param "${p.name}")))'')
-        stateDirParams);
+      seatbeltAllowReadWriteExec = builtins.concatStringsSep "\n" (map (p: ''
+        (allow file-read* file-write* (subpath (param "${p.name}")))
+        (allow process-exec (subpath (param "${p.name}")))'') stateDirParams);
 
       seatbeltAllowFiles = builtins.concatStringsSep "\n" (map
         (p: ''(allow file-read* file-write* (literal (param "${p.name}")))'')
@@ -288,7 +287,7 @@ let
         (map (file: ''touch "${file}"'') stateFiles);
 
       extraEnvStr = builtins.concatStringsSep "\n"
-        (map (name: ''export ${name}="${extraEnv.${name}}"'')
+        (map (name: "export ${name}=${builtins.toJSON extraEnv.${name}}")
           (builtins.attrNames extraEnv));
 
       seatbeltProfile = pkgs.writeText "${outName}-sandbox.sb" ''
@@ -296,10 +295,13 @@ let
         (deny default)
 
         ;; Process control
-        (allow process-exec)
         (allow process-fork)
         (allow signal)
         (allow sysctl-read)
+
+        ;; Process execution
+        (allow process-exec (subpath "/nix"))
+        (allow process-exec (subpath (param "CWD")))
 
         ;; Mach IPC — scoped to system services, security framework, FSEvents
         (allow mach-lookup (global-name-prefix "com.apple.system."))
@@ -389,7 +391,6 @@ let
           (literal "/private/var/db")
           (literal "/Users")
           (literal (param "HOME"))
-          (literal (param "HOME"))
           (literal (param "HOME_LOCAL"))
           (literal (param "HOME_CACHE"))
           (literal (param "HOME_LOCAL_SHARE"))
@@ -406,7 +407,7 @@ let
         (allow file-read* (subpath "/private/var/db/timezone"))
 
         ;; Explicit state directories & files
-        ${seatbeltAllowReadWrite}
+        ${seatbeltAllowReadWriteExec}
         ${seatbeltAllowFiles};
       '';
 
@@ -442,7 +443,7 @@ let
         -D REPO_ROOT="$REPO_ROOT" \
         -D REPO_ROOT_PARENT="$REPO_ROOT_PARENT" \
         -D GIT_CONFIG_DIR="$GIT_CONFIG_DIR" \
-        -D TMPDIR="''${TMPDIR:-/tmp}" \
+        -D TMPDIR="/tmp" \
         -D HOME="$HOME"  \
         -D HOME_CACHE="$HOME/.cache" \
         -D HOME_LOCAL="$HOME/.local" \
