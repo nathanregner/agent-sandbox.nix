@@ -14,42 +14,6 @@ Prevents agents in YOLO mode from reading your dotfiles, deleting your home dire
 
 Everything else is denied. `$HOME` is either an empty tmpfs (Linux) or inaccessible (macOS).
 
-## Authentication
-
-Because `$HOME` is masked, agents cannot reach your system keychain, browser sessions, or SSH keys. **Interactive login flows (e.g. `claude /login`, `gh auth login`) will not work inside the sandbox.** You must authenticate via an environment variable token instead.
-
-Export your token in the host terminal before launching the sandbox — tokens are evaluated at runtime to prevent them from leaking into the world-readable Nix store:
-
-```bash
-# Claude Code
-export CLAUDE_CODE_OAUTH_TOKEN="your_token_here"
-
-# GitHub Copilot CLI
-export GITHUB_TOKEN="your_token_here"
-
-```
-
-Pass the variable reference (not the value) into `extraEnv`:
-
-```nix
-extraEnv = {
-  CLAUDE_CODE_OAUTH_TOKEN = "$CLAUDE_CODE_OAUTH_TOKEN";
-  ...
-};
-```
-
-Alternatively, if you use sops, you can inject the secret at build time:
-
-```nix
-extraEnv = {
-  CLAUDE_CODE_OAUTH_TOKEN = "$(${pkgs.coreutils}/bin/cat /run/secrets/claude-code-oauth-token)" # or wherever your sops secrets directory is
-  ...
-};
-```
-
-> **Tested agents:** `claude-code` and `copilot-cli`. Other agents should work as long as they support token-based auth via an environment variable.
-
-> **Warning:** Git pushes are also blocked as a side effect of masking `$HOME` — the agent has no access to your `~/.ssh` keys. The only exception is if you have a plaintext access token hardcoded directly into your project's `.git/config` remote URL, or if you explicitly pass `GITHUB_TOKEN` in `extraEnv`.
 
 ## Usage
 
@@ -107,6 +71,44 @@ See `checks` in `flake.nix` for a minimal working example that is evaluated by `
 ### In a shell.nix
 
 See [`examples/claude.shell.nix`](examples/claude.shell.nix) for a ready-to-use template. Copy it into your project and adjust as needed.
+
+## Authentication
+
+Because `$HOME` is masked, agents cannot reach your system keychain, browser sessions, or SSH keys. **Interactive login flows (e.g. `claude /login`, `gh auth login`) will not work inside the sandbox.** You must authenticate via an environment variable token instead.
+
+Export your token in the host terminal before launching the sandbox — tokens are evaluated at runtime to prevent them from leaking into the world-readable Nix store:
+
+```bash
+# Claude Code
+export CLAUDE_CODE_OAUTH_TOKEN="your_token_here"
+
+# GitHub Copilot CLI
+export GITHUB_TOKEN="your_token_here"
+
+```
+
+Pass the variable reference (not the value) into `extraEnv`:
+
+```nix
+extraEnv = {
+  CLAUDE_CODE_OAUTH_TOKEN = "$CLAUDE_CODE_OAUTH_TOKEN";
+  ...
+};
+```
+
+Alternatively, if you use sops, you can inject the secret at build time:
+
+```nix
+extraEnv = {
+  CLAUDE_CODE_OAUTH_TOKEN = "$(${pkgs.coreutils}/bin/cat /run/secrets/claude-code-oauth-token)" # or wherever your sops secrets directory is
+  ...
+};
+```
+
+> **Tested agents:** `claude-code` and `copilot-cli`. Other agents should work as long as they support token-based auth via an environment variable.
+
+> **Warning:** Git pushes are also blocked as a side effect of masking `$HOME` — the agent has no access to your `~/.ssh` keys. The only exception is if you have a plaintext access token hardcoded directly into your project's `.git/config` remote URL, or if you explicitly pass `GITHUB_TOKEN` in `extraEnv`.
+
 
 ## Arguments
 
