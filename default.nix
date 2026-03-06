@@ -93,6 +93,9 @@ let
         --ro-bind /etc/passwd /etc/passwd \
         --ro-bind /etc/resolv.conf /etc/resolv.conf \
         --ro-bind /etc/ssl/certs /etc/ssl/certs \
+        --ro-bind-try /etc/ssl /etc/ssl \
+        --ro-bind-try /etc/static /etc/static \
+        --ro-bind-try /etc/pki /etc/pki \
         --proc /proc \
         --dev /dev \
         --tmpfs /tmp \
@@ -110,8 +113,9 @@ let
         --setenv TERM "$TERM" \
         --setenv SHELL "${pkgs.bash}/bin/bash" \
         --setenv PATH "${pathStr}" \
-        --setenv SSL_CERT_FILE "$SSL_CERT_FILE" \
-        --setenv SSL_CERT_DIR "$SSL_CERT_DIR" \
+        --setenv SSL_CERT_FILE "''${SSL_CERT_FILE:-/etc/ssl/certs/ca-certificates.crt}" \
+        --setenv SSL_CERT_DIR "''${SSL_CERT_DIR:-/etc/ssl/certs}" \
+        --setenv NIX_SSL_CERT_FILE "''${NIX_SSL_CERT_FILE:-/etc/ssl/certs/ca-certificates.crt}" \
         --setenv TMPDIR /tmp \
         ${extraEnvStr} \
         ${pkg}/bin/${binName} "$@"
