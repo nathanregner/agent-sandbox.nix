@@ -302,6 +302,9 @@ let
         ;; Process execution
         (allow process-exec (subpath "/nix"))
         (allow process-exec (subpath (param "CWD")))
+        (allow process-exec (literal "/bin/sh"))
+        (allow process-exec (literal "/bin/bash"))
+        (allow process-exec (literal "/usr/bin/env"))
 
         ;; Mach IPC — scoped to system services, security framework, FSEvents
         (allow mach-lookup (global-name-prefix "com.apple.system."))
@@ -342,7 +345,13 @@ let
           (regex #"^/dev/ttys[0-9]")
           (regex #"^/dev/pty")
           (regex #"^/dev/ttyp"))
-        ;; Device nodes & terminal I/O
+        (allow file-read-metadata
+          (literal "/dev/stdout")
+          (literal "/dev/stderr")
+          (literal "/dev/stdin")
+          (regex #"^/dev/ttyq")
+          (regex #"^/dev/ttyr")
+          (literal "/dev/dtracehelper"))
 
         ;; System libraries & frameworks
         (allow file-read*
@@ -363,6 +372,7 @@ let
           (subpath "/private/etc/ssl")
           (literal "/private/etc/passwd")
           (literal "/private/etc/localtime")
+          (literal "/private/etc/profile")
           (subpath "/private/etc/static")
           (literal "/private/etc/hosts"))
 
