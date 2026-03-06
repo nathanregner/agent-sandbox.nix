@@ -305,6 +305,7 @@ let
         (allow process-exec (literal "/bin/sh"))
         (allow process-exec (literal "/bin/bash"))
         (allow process-exec (literal "/usr/bin/env"))
+        (allow process-exec (literal "/usr/bin/plutil"))
 
         ;; Mach IPC — scoped to system services, security framework, FSEvents
         (allow mach-lookup (global-name-prefix "com.apple.system."))
