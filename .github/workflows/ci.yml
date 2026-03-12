@@ -37,4 +37,4 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@v16
 
       - name: Run sandbox tests
-        run: bash tests/test-sandbox.sh
+        run: bash tests/run-all.sh
