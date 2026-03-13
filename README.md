@@ -64,11 +64,6 @@ Here is an example flake that provides a development shell with a sandboxed clau
               # Use literal strings for secrets to evaluate at runtime!
               # builtins.getEnv will leak your token into the /nix/store.
               CLAUDE_CODE_OAUTH_TOKEN = "$CLAUDE_CODE_OAUTH_TOKEN";
-              # optionally provide the agent with a git identity to differentiate its commits from yours
-              GIT_AUTHOR_NAME = "claude-agent";
-              GIT_AUTHOR_EMAIL = "claude-agent@localhost";
-              GIT_COMMITTER_NAME = "claude-agent";
-              GIT_COMMITTER_EMAIL = "claude-agent@localhost";
             };
           };
         in {
@@ -80,14 +75,30 @@ Here is an example flake that provides a development shell with a sandboxed clau
 }
 ```
 
+Copy the above flake and adjust it to your needs. 
+
 > Note: claude and most other AI CLI tools are not FOSS. You will need to set `NIXPKGS_ALLOW_UNFREE=1` and invoke the shell with `--impure`:
-> ```bash
-> NIXPKGS_ALLOW_UNFREE=1 nix develop --impure
-> ```
+
+You can enter a dev shell with the sandboxed binary with:
+
+```bash
+NIXPKGS_ALLOW_UNFREE=1 nix develop --impure
+```
+
+And invoke your wrapped binary (e.g. claude, in this case) with:
+
+```bash
+claude-sandboxed --dangerously-skip-permissions # Claude Code's "YOLO mode"
+```
+
+If you want to keep "claude" as the alias, change the `outName` value to "claude".
+
+**Network Restrictions**: If you'd like to restrict network connection to particular domains, see [Network restrictions](#network-restrictions)
+
 
 ### In a shell.nix
 
-Provides a nix shell with a sandboxed claude binary:
+Provides a nix shell with a sandboxed copilot binary:
 
 ```nix
 let
@@ -96,10 +107,10 @@ let
     "https://github.com/archie-judd/agent-sandbox.nix/archive/main.tar.gz") {
       pkgs = pkgs;
     };
-  claude-sandboxed = sandbox.mkSandbox {
-    pkg = pkgs.claude-code;
-    binName = "claude";
-    outName = "claude-sandboxed"; # or whatever alias you'd like
+  copilot-sandboxed = sandbox.mkSandbox {
+    pkg = pkgs.github-copilot-cli;
+    binName = "copilot";
+    outName = "copilot-sandboxed"; # or whatever alias you'd like
     allowedPackages = [
       pkgs.coreutils
       pkgs.which
@@ -112,21 +123,34 @@ let
       pkgs.findutils
       pkgs.jq
     ];
-    stateDirs = [ "$HOME/.claude" ];
-    stateFiles = [ "$HOME/.claude.json" "$HOME/.claude.json.lock" ];
+    stateDirs = [ "$HOME/.config/github-copilot" "$HOME/.copilot" ];
+    stateFiles = [ ];
     extraEnv = {
       # Use literal strings for secrets to evaluate at runtime!
       # builtins.getEnv will leak your token into the /nix/store.
-      CLAUDE_CODE_OAUTH_TOKEN = "$CLAUDE_CODE_OAUTH_TOKEN";
-      # optionally provide the agent with a git identity to differentiate its commits from yours
-      GIT_AUTHOR_NAME = "claude-agent";
-      GIT_AUTHOR_EMAIL = "claude-agent@localhost";
-      GIT_COMMITTER_NAME = "claude-agent";
-      GIT_COMMITTER_EMAIL = "claude-agent@localhost";
+      GITHUB_TOKEN = "$GITHUB_TOKEN";
     };
   };
-in pkgs.mkShell { packages = [ claude-sandboxed ]; }
+in pkgs.mkShell { packages = [ copilot-sandboxed ]; }
 ```
+
+Copy the above shell and adjust it to your needs. 
+
+You can enter a dev shell with the sandboxed binary with:
+
+```bash
+nix-shell shell.nix
+```
+
+And invoke your wrapped binary (e.g. copilot, in this case) with:
+
+```bash
+copilot-sandboxed --yolo
+```
+
+If you want to keep "copilot" as the alias, change the `outName` value to "copilot".
+
+**Network Restrictions**: If you'd like to restrict network connection to particular domains, see [Network restrictions](#network-restrictions).
 
 ### Network restrictions
 
@@ -147,7 +171,7 @@ By default, network access is unrestricted. But you can optionally restrict conn
   };
 ```
 
-`allowedDomains` are suffix-matched, so you "anthropic.com" will capture all *.anthropic.com domains.
+`allowedDomains` are suffix-matched, so "anthropic.com" will capture all *.anthropic.com domains.
 
 ## Arguments
 
@@ -203,7 +227,20 @@ extraEnv = {
 
 ## Common Patterns / Recipes
 
-Because the sandbox blocks access to your home directory, tools that rely on global caches, configuration files, or auth states will fail (EACCES or ENOENT) unless explicitly permitted in `stateDirs` or `stateFiles`.
+### Git identity
+
+To give the agent its own git identity, you can pass in the following environment variables. E.g., for copilot:
+
+```nix
+    extraEnv = {
+      ...
+      GIT_AUTHOR_NAME = "copilot-agent";
+      GIT_AUTHOR_EMAIL = "copilot-agent@localhost";
+      GIT_COMMITTER_NAME = "copilot-agent";
+      GIT_COMMITTER_EMAIL = "copilot-agent@localhost";
+    };
+```
+
 
 ### Python with uv
 
