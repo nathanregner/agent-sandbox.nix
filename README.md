@@ -93,7 +93,7 @@ claude-sandboxed --dangerously-skip-permissions # Claude Code's "YOLO mode"
 
 If you want to keep "claude" as the alias, change the `outName` value to "claude".
 
-**Network Restrictions**: If you'd like to restrict network connection to particular domains, see [Network restrictions](#network-restrictions)
+> **Network Restrictions**: If you'd like to restrict network connection to particular domains, see [Network restrictions](#network-restrictions)
 
 
 ### In a shell.nix
@@ -150,7 +150,7 @@ copilot-sandboxed --yolo
 
 If you want to keep "copilot" as the alias, change the `outName` value to "copilot".
 
-**Network Restrictions**: If you'd like to restrict network connection to particular domains, see [Network restrictions](#network-restrictions).
+> **Network Restrictions**: If you'd like to restrict network connection to particular domains, see [Network restrictions](#network-restrictions).
 
 ### Network restrictions
 
