@@ -322,10 +322,7 @@ Blocked requests are logged to `/tmp/sandbox-proxy.log`.
 
 ## Caveats
 
-- **Network exfiltration.** Without `restrictNetwork`, an agent can exfiltrate any file it can read. With restrictions, macOS is fully filtered but Linux is proxy-based only.
 - **`sandbox-exec` is deprecated on macOS.** It remains the only native unprivileged sandboxing mechanism and currently works on macOS 26 (Tahoe) and older, but may break in a future release.
-- **State directories dictate your safety.** The sandbox is only as safe as what you pass into `stateDirs`. Never add `$HOME`.
-- See the comments in `default.nix` for detailed debugging tips for each platform.
 - Tested on x86_64-linux and aarch64-darwin. Other architectures should work but are untested.
 
 ## Similar projects
