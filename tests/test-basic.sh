@@ -63,6 +63,8 @@ expect_fail "host dotfiles are not visible" "ls \$HOME/.bashrc"
 if [ "$OS" = "Darwin" ]; then
 	expect_fail "cannot write to /etc" "touch /etc/test"
 	expect_ok "can exec /bin/sh subshell" "/bin/sh -c 'echo hello'"
+	REAL_HOME="/Users/$(whoami)"
+	expect_fail "cannot read real home" "ls $REAL_HOME/.ssh"
 elif [ "$OS" = "Linux" ]; then
 	expect_ok "/etc is writable tmpfs (ephemeral)" "touch /etc/test && rm /etc/test"
 	expect_fail "cannot read host /etc/shadow" "cat /etc/shadow"
