@@ -132,7 +132,9 @@ let
 
       };
 
-      closurePathsFile = pkgs.writeClosure (allowedPackages ++ [ pkg ]);
+      # cacert is always included so SSL/TLS verification works even if nothing
+      # in allowedPackages or pkg explicitly depends on it.
+      closurePathsFile = pkgs.writeClosure (allowedPackages ++ [ pkg pkgs.cacert ]);
 
     in pkgs.writeShellScriptBin outName ''
       CWD=$(pwd)
@@ -178,9 +180,9 @@ let
         --setenv TERM "$TERM" \
         --setenv SHELL "${pkgs.bash}/bin/bash" \
         --setenv PATH "${pathStr}" \
-        --setenv SSL_CERT_FILE "''${SSL_CERT_FILE:-/etc/ssl/certs/ca-certificates.crt}" \
-        --setenv SSL_CERT_DIR "''${SSL_CERT_DIR:-/etc/ssl/certs}" \
-        --setenv NIX_SSL_CERT_FILE "''${NIX_SSL_CERT_FILE:-/etc/ssl/certs/ca-certificates.crt}" \
+        --setenv SSL_CERT_FILE "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt" \
+        --setenv SSL_CERT_DIR "${pkgs.cacert}/etc/ssl/certs" \
+        --setenv NIX_SSL_CERT_FILE "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt" \
         --setenv TMPDIR /tmp \
         ${conditionalNetworkingParams.proxyEnvBubblewrapStr} \
         ${extraEnvStr} \
@@ -453,7 +455,9 @@ let
 
       };
 
-      closurePathsFile = pkgs.writeClosure (allowedPackages ++ [ pkg ]);
+      # cacert is always included so SSL/TLS verification works even if nothing
+      # in allowedPackages or pkg explicitly depends on it.
+      closurePathsFile = pkgs.writeClosure (allowedPackages ++ [ pkg pkgs.cacert ]);
 
       # Static seatbelt rules that don't depend on the closure — evaluated at
       # Nix eval time so that Nix interpolations (conditionalNetworkingParams,
@@ -655,8 +659,9 @@ let
         TERM="$TERM" \
         SHELL="${pkgs.bash}/bin/bash" \
         PATH="${pathStr}" \
-        SSL_CERT_FILE="''${SSL_CERT_FILE:-/etc/ssl/certs/ca-certificates.crt}" \
-        SSL_CERT_DIR="''${SSL_CERT_DIR:-/etc/ssl/certs}" \
+        SSL_CERT_FILE="${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt" \
+        SSL_CERT_DIR="${pkgs.cacert}/etc/ssl/certs" \
+        NIX_SSL_CERT_FILE="${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt" \
         GIT_CONFIG_DIR="$GIT_CONFIG_DIR" \
         TMPDIR=/tmp \
         ${conditionalNetworkingParams.proxyEnvInlineBashStr} \
