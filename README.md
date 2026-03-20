@@ -307,7 +307,7 @@ See [`debug/bash.shell.nix`](debug/bash.shell.nix) for a ready-to-use template (
 ```bash
 tail -f /tmp/sandbox-proxy.log
 ```
-You may need to add them `allowDomains`.
+You may need to add them to `allowedDomains`.
 
 **macOS:** after a failure, you can query the system log for sandbox denials:
 ```bash
