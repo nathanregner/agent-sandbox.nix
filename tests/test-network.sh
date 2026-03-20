@@ -30,7 +30,12 @@ run() { "$UNRES_SHELL" --norc --noprofile -c "$@" >/dev/null 2>&1; }
 expect_ok "unrestricted mode can reach any domain" \
 	'curl -s --max-time 10 -o /dev/null http://example.com'
 
-# Test 4: empty allowlist blocks everything
+# Test 4: SSL certificate verification works (cacert in closure)
+# This will fail with "SSL certificate problem" if cacert is not accessible
+expect_ok "HTTPS with SSL verification works" \
+	'curl -s --max-time 10 -o /dev/null https://httpbin.org/get'
+
+# Test 5: empty allowlist blocks everything
 SANDBOXED_BLOCK=$(nix-build --no-out-link "$SCRIPT_DIR/network-blocked.nix")
 BLOCK_SHELL="$SANDBOXED_BLOCK/bin/sandboxed-bash-block"
 run() { "$BLOCK_SHELL" --norc --noprofile -c "$@" >/dev/null 2>&1; }
@@ -38,7 +43,7 @@ run() { "$BLOCK_SHELL" --norc --noprofile -c "$@" >/dev/null 2>&1; }
 expect_fail "empty allowlist blocks all domains" \
 	'curl -sf --max-time 10 -o /dev/null http://example.com'
 
-# Test 5 (Linux only): DNS resolution is blocked when restrictNetwork=true
+# Test 6 (Linux only): DNS resolution is blocked when restrictNetwork=true
 if [ "$OS" = "Linux" ]; then
 	expect_fail "DNS resolution blocked when restrictNetwork=true" \
 		'getent hosts example.com'
