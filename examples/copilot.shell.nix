@@ -30,10 +30,10 @@ let
     stateFiles = [ ];
     extraEnv = {
       GITHUB_TOKEN = "$GITHUB_TOKEN";
-      GIT_AUTHOR_NAME = "copilot-agent";
-      GIT_AUTHOR_EMAIL = "copilot-agent@localhost";
-      GIT_COMMITTER_NAME = "copilot-agent";
-      GIT_COMMITTER_EMAIL = "copilot-agent@localhost";
+      GIT_AUTHOR_NAME = "copilot";
+      GIT_AUTHOR_EMAIL = "copilot@localhost";
+      GIT_COMMITTER_NAME = "copilot";
+      GIT_COMMITTER_EMAIL = "copilot@localhost";
     };
     restrictNetwork = true;
     allowedDomains = [

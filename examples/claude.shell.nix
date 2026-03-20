@@ -33,10 +33,10 @@ let
       # builtins.getEnv will leak your token into the /nix/store.
       CLAUDE_CODE_OAUTH_TOKEN = "$CLAUDE_CODE_OAUTH_TOKEN";
       GITHUB_TOKEN = "$GITHUB_TOKEN";
-      GIT_AUTHOR_NAME = "claude-agent";
-      GIT_AUTHOR_EMAIL = "claude-agent@localhost";
-      GIT_COMMITTER_NAME = "claude-agent";
-      GIT_COMMITTER_EMAIL = "claude-agent@localhost";
+      GIT_AUTHOR_NAME = "claude";
+      GIT_AUTHOR_EMAIL = "claude@localhost";
+      GIT_COMMITTER_NAME = "claude";
+      GIT_COMMITTER_EMAIL = "claude@localhost";
     };
     restrictNetwork = true;
     allowedDomains = [
