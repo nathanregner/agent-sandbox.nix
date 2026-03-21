@@ -398,26 +398,35 @@ let
       stateFileFlags = builtins.concatStringsSep " \\\n  "
         (map (p: ''-D ${p.name}="$_RESOLVED_${p.name}"'') stateFileParams);
 
-      # Resolve stateDirs/stateFiles while HOME is still real
+      # Resolve stateDirs/stateFiles while HOME is still real.
+      # _ORIG_* preserves the original path (for symlink placement);
+      # _RESOLVED_* follows symlinks to the real target (for Seatbelt params).
       resolveStateDirsStr = builtins.concatStringsSep "\n"
-        (map (p: ''_RESOLVED_${p.name}="${p.path}"'') stateDirParams);
+        (map (p: ''
+    _ORIG_${p.name}="${p.path}"
+    _RESOLVED_${p.name}=$(${pkgs.coreutils}/bin/realpath "$_ORIG_${p.name}" 2>/dev/null || echo "$_ORIG_${p.name}")
+  '') stateDirParams);
 
       resolveStateFilesStr = builtins.concatStringsSep "\n"
-        (map (p: ''_RESOLVED_${p.name}="${p.path}"'') stateFileParams);
+        (map (p: ''
+    _ORIG_${p.name}="${p.path}"
+    _RESOLVED_${p.name}=$(${pkgs.coreutils}/bin/realpath "$_ORIG_${p.name}" 2>/dev/null || echo "$_ORIG_${p.name}")
+  '') stateFileParams);
 
-      # Symlink resolved state paths into the sandbox HOME so that
-      # $HOME-relative lookups land on the real paths. Only creates
-      # symlinks for paths that actually live under the real HOME.
+      # Symlink state paths into the sandbox HOME so that $HOME-relative
+      # lookups still work. The symlink is placed at the original path's
+      # relative position but points to the resolved (real) target so that
+      # Seatbelt's file-write* rule (which covers the resolved path) applies.
       symlinkStateDirsStr = builtins.concatStringsSep "\n" (map (p: ''
-        if [[ "$_RESOLVED_${p.name}" == "$REAL_HOME"/* ]]; then
-          _REL="''${_RESOLVED_${p.name}#$REAL_HOME/}"
+        if [[ "$_ORIG_${p.name}" == "$REAL_HOME"/* ]]; then
+          _REL="''${_ORIG_${p.name}#$REAL_HOME/}"
           mkdir -p "$SANDBOX_HOME/$(dirname "$_REL")"
           ln -sfn "$_RESOLVED_${p.name}" "$SANDBOX_HOME/$_REL"
         fi'') stateDirParams);
 
       symlinkStateFilesStr = builtins.concatStringsSep "\n" (map (p: ''
-        if [[ "$_RESOLVED_${p.name}" == "$REAL_HOME"/* ]]; then
-          _REL="''${_RESOLVED_${p.name}#$REAL_HOME/}"
+        if [[ "$_ORIG_${p.name}" == "$REAL_HOME"/* ]]; then
+          _REL="''${_ORIG_${p.name}#$REAL_HOME/}"
           mkdir -p "$SANDBOX_HOME/$(dirname "$_REL")"
           ln -sfn "$_RESOLVED_${p.name}" "$SANDBOX_HOME/$_REL"
         fi'') stateFileParams);
@@ -595,11 +604,13 @@ let
           (subpath (param "TMPDIR"))
           (subpath "/private/var/folders"))
 
-        ;; Nix store — allow stat() but not readdir(), so path resolution
-        ;; works without leaking the full store listing
+        ;; Nix store — full read access so symlinks into the store (e.g.
+        ;; home-manager-managed config files) are followable. Execution is
+        ;; still restricted to the allowed closure below.
         (allow file-read-metadata
           (literal "/nix")
           (literal "/nix/store"))
+        (allow file-read* (subpath "/nix/store"))
 
         ;; Filesystem traversal — stat() on parent dirs for path resolution
         (allow file-read*
