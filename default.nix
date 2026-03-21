@@ -71,7 +71,8 @@ let
     , stateFiles ? [ ], extraEnv ? { }, restrictNetwork ? false
     , allowedDomains ? [ ] }:
     let
-      pathStr = pkgs.lib.makeBinPath allowedPackages;
+      implicitPackages = [ pkgs.cacert pkgs.bashNonInteractive ];
+      pathStr = pkgs.lib.makeBinPath (allowedPackages ++ implicitPackages);
       mkDirsStr = builtins.concatStringsSep "\n"
         (map (dir: ''mkdir -p "${dir}"'') stateDirs);
       mkFilesStr = builtins.concatStringsSep "\n"
@@ -132,12 +133,18 @@ let
 
       };
 
-      # cacert is always included so SSL/TLS verification works even if nothing
-      # in allowedPackages or pkg explicitly depends on it.
+      # cacert and bashNonInteractive are always included: cacert so SSL/TLS
+      # verification works, bashNonInteractive so the hardcoded SHELL and
+      # /bin/sh symlink targets are always reachable in the store closure.
       closurePathsFile =
-        pkgs.writeClosure (allowedPackages ++ [ pkg pkgs.cacert ]);
+        pkgs.writeClosure (allowedPackages ++ implicitPackages ++ [ pkg ]);
 
-    in pkgs.writeShellScriptBin outName ''
+    in pkgs.writeTextFile {
+      name = outName;
+      executable = true;
+      destination = "/bin/${outName}";
+      text = ''
+      #!${pkgs.bashNonInteractive}/bin/bash
       CWD=$(pwd)
       ${conditionalNetworkingParams.warnIgnoredDomainsBashStr}
       ${mkDirsStr}
@@ -171,7 +178,7 @@ let
         ${bindDirsStr} \
         ${bindFilesStr} \
         $GIT_BIND \
-        --symlink ${pkgs.bash}/bin/bash /bin/sh \
+        --symlink ${pkgs.bashNonInteractive}/bin/bash /bin/sh \
         --unshare-all \
         --share-net \
         --die-with-parent \
@@ -179,7 +186,7 @@ let
         --clearenv \
         --setenv HOME "$HOME" \
         --setenv TERM "$TERM" \
-        --setenv SHELL "${pkgs.bash}/bin/bash" \
+        --setenv SHELL "${pkgs.bashNonInteractive}/bin/bash" \
         --setenv PATH "${pathStr}" \
         --setenv SSL_CERT_FILE "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt" \
         --setenv SSL_CERT_DIR "${pkgs.cacert}/etc/ssl/certs" \
@@ -188,7 +195,8 @@ let
         ${conditionalNetworkingParams.proxyEnvBubblewrapStr} \
         ${extraEnvStr} \
         ${pkg}/bin/${binName} "$@"
-    '';
+      '';
+    }
   /* mkDarwinSandbox — wraps a binary using macOS Seatbelt (sandbox-exec).
 
      Seatbelt uses a deny-default policy: everything is forbidden unless an
@@ -336,12 +344,14 @@ let
     , stateFiles ? [ ], extraEnv ? { }, restrictNetwork ? false
     , allowedDomains ? [ ] }:
     let
-      pathStr = pkgs.lib.makeBinPath allowedPackages;
+      implicitPackages = [ pkgs.cacert pkgs.bashNonInteractive ];
+      pathStr = pkgs.lib.makeBinPath (allowedPackages ++ implicitPackages);
 
       warnBashInteractive =
         if builtins.any (pkg: pkg.pname or "" == "bash-interactive") allowedPackages then ''
-          echo "WARNING: bash-interactive will try to load profile files that may access" >&2
-          echo "         paths outside the nix store closure. Use pkgs.bashNonInteractive instead." >&2
+          echo "WARNING: bash-interactive is on PATH and will try to load profile files" >&2
+          echo "         that may access paths outside the nix store closure." >&2
+          echo "         Use pkgs.bashNonInteractive instead." >&2
         '' else "";
 
       # Generate indexed param names
@@ -463,10 +473,11 @@ let
 
       };
 
-      # cacert is always included so SSL/TLS verification works even if nothing
-      # in allowedPackages or pkg explicitly depends on it.
+      # cacert and bashNonInteractive are always included: cacert so SSL/TLS
+      # verification works, bashNonInteractive so the hardcoded SHELL target
+      # is always reachable in the store closure.
       closurePathsFile =
-        pkgs.writeClosure (allowedPackages ++ [ pkg pkgs.cacert ]);
+        pkgs.writeClosure (allowedPackages ++ implicitPackages ++ [ pkg ]);
 
       # Static seatbelt rules that don't depend on the closure — evaluated at
       # Nix eval time so that Nix interpolations (conditionalNetworkingParams,
@@ -624,7 +635,12 @@ let
         } > $out
       '';
 
-    in pkgs.writeShellScriptBin outName ''
+    in pkgs.writeTextFile {
+      name = outName;
+      executable = true;
+      destination = "/bin/${outName}";
+      text = ''
+      #!${pkgs.bashNonInteractive}/bin/bash
       CWD=$(pwd)
       ${conditionalNetworkingParams.warnIgnoredDomainsBashStr}
       ${warnBashInteractive}
@@ -667,7 +683,7 @@ let
       ${conditionalNetworkingParams.sandboxExecBashStr}/usr/bin/env -i \
         HOME="$SANDBOX_HOME" \
         TERM="$TERM" \
-        SHELL="${pkgs.bash}/bin/bash" \
+        SHELL="${pkgs.bashNonInteractive}/bin/bash" \
         PATH="${pathStr}" \
         SSL_CERT_FILE="${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt" \
         SSL_CERT_DIR="${pkgs.cacert}/etc/ssl/certs" \
@@ -691,7 +707,8 @@ let
         -D HOME_LOCAL_STATE="$SANDBOX_HOME/.local/state" \
         -D HOME_LOCAL_SHARE="$SANDBOX_HOME/.local/share" ${stateDirFlags} ${stateFileFlags} \
         ${pkg}/bin/${binName} "$@"
-    '';
+      '';
+    }
 
 in {
   mkSandbox = if pkgs.stdenv.isDarwin then mkDarwinSandbox else mkLinuxSandbox;
