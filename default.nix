@@ -398,35 +398,26 @@ let
       stateFileFlags = builtins.concatStringsSep " \\\n  "
         (map (p: ''-D ${p.name}="$_RESOLVED_${p.name}"'') stateFileParams);
 
-      # Resolve stateDirs/stateFiles while HOME is still real.
-      # _ORIG_* preserves the original path (for symlink placement);
-      # _RESOLVED_* follows symlinks to the real target (for Seatbelt params).
+      # Resolve stateDirs/stateFiles while HOME is still real
       resolveStateDirsStr = builtins.concatStringsSep "\n"
-        (map (p: ''
-    _ORIG_${p.name}="${p.path}"
-    _RESOLVED_${p.name}=$(${pkgs.coreutils}/bin/realpath "$_ORIG_${p.name}" 2>/dev/null || echo "$_ORIG_${p.name}")
-  '') stateDirParams);
+        (map (p: ''_RESOLVED_${p.name}="${p.path}"'') stateDirParams);
 
       resolveStateFilesStr = builtins.concatStringsSep "\n"
-        (map (p: ''
-    _ORIG_${p.name}="${p.path}"
-    _RESOLVED_${p.name}=$(${pkgs.coreutils}/bin/realpath "$_ORIG_${p.name}" 2>/dev/null || echo "$_ORIG_${p.name}")
-  '') stateFileParams);
+        (map (p: ''_RESOLVED_${p.name}="${p.path}"'') stateFileParams);
 
-      # Symlink state paths into the sandbox HOME so that $HOME-relative
-      # lookups still work. The symlink is placed at the original path's
-      # relative position but points to the resolved (real) target so that
-      # Seatbelt's file-write* rule (which covers the resolved path) applies.
+      # Symlink resolved state paths into the sandbox HOME so that
+      # $HOME-relative lookups land on the real paths. Only creates
+      # symlinks for paths that actually live under the real HOME.
       symlinkStateDirsStr = builtins.concatStringsSep "\n" (map (p: ''
-        if [[ "$_ORIG_${p.name}" == "$REAL_HOME"/* ]]; then
-          _REL="''${_ORIG_${p.name}#$REAL_HOME/}"
+        if [[ "$_RESOLVED_${p.name}" == "$REAL_HOME"/* ]]; then
+          _REL="''${_RESOLVED_${p.name}#$REAL_HOME/}"
           mkdir -p "$SANDBOX_HOME/$(dirname "$_REL")"
           ln -sfn "$_RESOLVED_${p.name}" "$SANDBOX_HOME/$_REL"
         fi'') stateDirParams);
 
       symlinkStateFilesStr = builtins.concatStringsSep "\n" (map (p: ''
-        if [[ "$_ORIG_${p.name}" == "$REAL_HOME"/* ]]; then
-          _REL="''${_ORIG_${p.name}#$REAL_HOME/}"
+        if [[ "$_RESOLVED_${p.name}" == "$REAL_HOME"/* ]]; then
+          _REL="''${_RESOLVED_${p.name}#$REAL_HOME/}"
           mkdir -p "$SANDBOX_HOME/$(dirname "$_REL")"
           ln -sfn "$_RESOLVED_${p.name}" "$SANDBOX_HOME/$_REL"
         fi'') stateFileParams);

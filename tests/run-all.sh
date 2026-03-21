@@ -24,7 +24,6 @@ run_suite "Basic sandbox tests" "test-basic.sh"
 run_suite "Nix store isolation tests" "test-nix-store-isolation.sh"
 run_suite "Network restriction tests" "test-network.sh"
 run_suite "Bash-interactive warning test" "test-bash-warning.sh"
-run_suite "Symlink state tests" "test-symlink-state.sh"
 
 echo
 echo "========================================"

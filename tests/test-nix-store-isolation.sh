@@ -23,12 +23,11 @@ echo
 expect_ok "can run allowed binary (ls)" "ls / > /dev/null"
 expect_ok "can run allowed binary (echo)" "echo hello"
 
-# --- Disallowed package should not be executable ---
+# --- Disallowed package should be inaccessible ---
 expect_fail "cannot execute disallowed store path" '"$DISALLOWED_STORE_PATH/bin/hello"'
 
-# --- On Linux, bubblewrap bind-mounts only the closure so reads are also blocked.
-# --- On Darwin, the nix store is readable (needed for symlinked config files).
-if [ "$OS" != "Darwin" ]; then
+# On Darwin, the nix store must be readable (but not executable) for code signing to work
+if [ "$OS" = "Linux" ]; then
   expect_fail "cannot read disallowed store path binary" 'cat "$DISALLOWED_STORE_PATH/bin/hello"'
   expect_fail "cannot list disallowed store path" 'ls "$DISALLOWED_STORE_PATH"'
 fi
