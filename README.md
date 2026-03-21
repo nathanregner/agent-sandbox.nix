@@ -56,7 +56,7 @@ Here is an example flake that provides a development shell with a sandboxed clau
               pkgs.gnugrep
               pkgs.findutils
               pkgs.jq
-            ];
+            ]; # bash is allowed by default - it is required by the sandbox
             stateDirs = [ "$HOME/.claude" ];
             stateFiles = [ "$HOME/.claude.json" "$HOME/.claude.json.lock" ];
             extraEnv = {
@@ -121,7 +121,7 @@ let
       pkgs.gnugrep
       pkgs.findutils
       pkgs.jq
-    ];
+    ]; # bash is allowed by default - it is required by the sandbox
     stateDirs = [ "$HOME/.config/github-copilot" "$HOME/.copilot" ];
     stateFiles = [ ];
     extraEnv = {
@@ -181,7 +181,7 @@ When `restrictNetwork = true`, network connections are routed through a localhos
 | `pkg` | yes | Package containing the binary to wrap |
 | `binName` | yes | Name of the binary inside `pkg/bin/` |
 | `outName` | yes | Name for the resulting wrapped binary and the command to invoke it with |
-| `allowedPackages` | yes | Packages whose `bin/` dirs form the sandbox PATH. `bash` and `cacert` are always included — the sandbox needs a shell to run, and `cacert` is required for HTTPS to work. |
+| `allowedPackages` | yes | Packages whose `bin/` dirs form the sandbox PATH. `bash` and `cacert` are provided by default — the sandbox needs a shell to run, and `cacert` is required for HTTPS to work. |
 | `stateDirs` | no | Directories the agent can read/write (e.g. `~/.config/claude`) |
 | `stateFiles` | no | Individual files the agent can read/write |
 | `extraEnv` | no | Additional environment variables as an attrset |
