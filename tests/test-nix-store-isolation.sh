@@ -12,7 +12,9 @@ SHELL="$SANDBOXED/bin/sandboxed-bash-store-isolation"
 run() { "$SHELL" --norc --noprofile -c "$@" >/dev/null 2>&1; }
 run_output() { "$SHELL" --norc --noprofile -c "$@" 2>/dev/null; }
 
-TESTDIR=$(mktemp -d)
+TESTDIR_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)/.tmp-test"
+mkdir -p "$TESTDIR_ROOT"
+TESTDIR=$(mktemp -d "$TESTDIR_ROOT/store-isolation.XXXXXX")
 trap 'rm -rf "$TESTDIR"' EXIT
 cd "$TESTDIR"
 
