@@ -187,7 +187,7 @@ When `restrictNetwork = true`, network connections are routed through a localhos
 | `extraEnv` | no | Additional environment variables as an attrset |
 | `restrictNetwork` | no | When `true`, network is limited to `allowedDomains` (default `false`) |
 | `allowedDomains` | no | Domains the sandbox can reach when `restrictNetwork = true` |
-| `bindRepoRoot` | no | When `true` any parent git repo becomes readable, even if the sandbox is invoked in a sub-directory or worktree. The repo's `.git` directory is read-write. When `false`, the repo root and `.git` are not accessible. (default `true`) |
+| `bindRepoRoot` | no | When `true` any parent git repo becomes readable, even if the sandbox is invoked in a sub-directory or worktree. The repo's `.git` directory is read-write. When `false`, the repo root and `.git` are not accessible unless within $CWD. (default `true`) |
 
 
 ## Authentication
