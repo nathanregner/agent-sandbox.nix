@@ -187,6 +187,7 @@ When `restrictNetwork = true`, network connections are routed through a localhos
 | `extraEnv` | no | Additional environment variables as an attrset |
 | `restrictNetwork` | no | When `true`, network is limited to `allowedDomains` (default `false`) |
 | `allowedDomains` | no | Domains the sandbox can reach when `restrictNetwork = true` |
+| `bindRepoRoot` | no | When `true` (default), bind-mounts the git repo root read-only (Linux) or allows read-only access (Darwin), keeping `.git` read-write. When `false`, the repo root and `.git` are not accessible. |
 
 
 ## Authentication
