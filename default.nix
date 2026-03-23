@@ -36,13 +36,17 @@ let
            /tmp    — scratch space
            $HOME   — prevents accidental reads of dotfiles; agent state
                       dirs are bind-mounted back on top of this
+         Read-only bind mounts (when bindRepoRoot = true):
+           $REPO_ROOT  — the git repo root, so git commands and reads of
+                         files outside CWD work. CWD and GIT_DIR are
+                         mounted rw on top of this.
          Read-write bind mounts:
            $CWD        — the project directory (always)
            stateDirs   — each path gets a --bind (e.g., ~/.config/claude)
            stateFiles  — each path gets a --bind (e.g., specific rc files)
-           $GIT_DIR    — the .git dir, auto-detected; only if inside a repo.
-                         Needed when CWD is a worktree and .git/common is
-                         outside CWD.
+           $GIT_DIR    — the .git dir, auto-detected; only when
+                         bindRepoRoot = true. Needed when CWD is a
+                         worktree and .git/common is outside CWD.
          Symlinks:
            /bin/sh -> bash — many scripts assume /bin/sh exists
 
@@ -82,7 +86,7 @@ let
   */
   mkLinuxSandbox = { pkg, binName, outName, allowedPackages, stateDirs ? [ ]
     , stateFiles ? [ ], extraEnv ? { }, restrictNetwork ? false
-    , allowedDomains ? [ ] }:
+    , allowedDomains ? [ ], bindRepoRoot ? true }:
     let
       implicitPackages = [ pkgs.cacert bashWrapper ];
       pathStr = pkgs.lib.makeBinPath (allowedPackages ++ implicitPackages);
@@ -154,6 +158,19 @@ let
       closurePathsFile =
         pkgs.writeClosure (allowedPackages ++ implicitPackages ++ [ pkg ]);
 
+      gitDetectionBashStr = if bindRepoRoot then ''
+        GIT_BIND=""
+        REPO_BIND=""
+        if GIT_DIR=$(${pkgs.git}/bin/git rev-parse --path-format=absolute --git-common-dir 2>/dev/null); then
+          GIT_BIND="--bind $GIT_DIR $GIT_DIR"
+          REPO_ROOT=$(dirname "$GIT_DIR")
+          REPO_BIND="--ro-bind $REPO_ROOT $REPO_ROOT"
+        fi
+      '' else ''
+        GIT_BIND=""
+        REPO_BIND=""
+      '';
+
     in pkgs.writeTextFile {
       name = outName;
       executable = true;
@@ -164,10 +181,7 @@ let
         ${conditionalNetworkingParams.warnIgnoredDomainsBashStr}
         ${mkDirsStr}
         ${mkFilesStr}
-        GIT_BIND=""
-        if GIT_DIR=$(${pkgs.git}/bin/git rev-parse --path-format=absolute --git-common-dir 2>/dev/null); then
-          GIT_BIND="--bind $GIT_DIR $GIT_DIR"
-        fi
+        ${gitDetectionBashStr}
 
         # Build per-path ro-bind flags for the nix store closure
         CLOSURE_BINDS=""
@@ -189,6 +203,7 @@ let
           --dev /dev \
           --tmpfs /tmp \
           --tmpfs "$HOME" \
+          $REPO_BIND \
           --bind "$CWD" "$CWD" \
           ${bindDirsStr} \
           ${bindFilesStr} \
@@ -303,10 +318,10 @@ let
          this, even accessing an allowed subpath can fail with EPERM
          during the stat() of a parent directory.
 
-       Working directory & repo:
+       Working directory & repo (when bindRepoRoot = true):
          $CWD (subpath)        — full read-write to the project
-         $REPO_ROOT (subpath)  — the repo root, which may differ from
-                                 CWD if CWD is a subdirectory
+         $REPO_ROOT (subpath)  — read-only; the repo root, which may
+                                 differ from CWD if CWD is a subdirectory
          $GIT_DIR (subpath)    — the .git dir (may be outside repo root
                                  for worktrees)
          $GIT_CONFIG_DIR       — ~/.config/git (read-only) for user
@@ -357,19 +372,10 @@ let
   */
   mkDarwinSandbox = { pkg, binName, outName, allowedPackages, stateDirs ? [ ]
     , stateFiles ? [ ], extraEnv ? { }, restrictNetwork ? false
-    , allowedDomains ? [ ] }:
+    , allowedDomains ? [ ], bindRepoRoot ? true }:
     let
       implicitPackages = [ pkgs.cacert bashWrapper ];
       pathStr = pkgs.lib.makeBinPath (allowedPackages ++ implicitPackages);
-
-      warnBashInteractive =
-        if builtins.any (p: p.pname or "" == "bash-interactive")
-        allowedPackages then ''
-          echo "WARNING: bash-interactive will try to load profile files" >&2
-          echo "         that may access paths outside the nix store closure." >&2
-          echo "         Use pkgs.bashNonInteractive instead." >&2
-        '' else
-          "";
 
       # Generate indexed param names
       stateDirParams = builtins.genList (i: {
@@ -498,6 +504,22 @@ let
       closurePathsFile =
         pkgs.writeClosure (allowedPackages ++ implicitPackages ++ [ pkg ]);
 
+      gitDetectionBashStr = if bindRepoRoot then ''
+        if GIT_DIR=$(${pkgs.git}/bin/git rev-parse --path-format=absolute --git-common-dir 2>/dev/null); then
+            GIT_DIR_PARAM="$GIT_DIR"
+            REPO_ROOT=$(dirname "$GIT_DIR_PARAM")
+            REPO_ROOT_PARENT=$(dirname "$REPO_ROOT")
+        else
+            GIT_DIR_PARAM="/nonexistent-git-dir"
+            REPO_ROOT="/nonexistent-repo-root"
+            REPO_ROOT_PARENT="/nonexistent-repo-root"
+        fi
+      '' else ''
+        GIT_DIR_PARAM="/nonexistent-git-dir"
+        REPO_ROOT="/nonexistent-repo-root"
+        REPO_ROOT_PARENT="/nonexistent-repo-root"
+      '';
+
       # Static seatbelt rules that don't depend on the closure — evaluated at
       # Nix eval time so that Nix interpolations (conditionalNetworkingParams,
       # seatbeltAllowReadWriteExec, etc.) are resolved before being embedded
@@ -625,7 +647,7 @@ let
 
         ;; Working directory & repository
         (allow file-read* file-write* (subpath (param "CWD")))
-        (allow file-read* file-write* (subpath (param "REPO_ROOT")))
+        (allow file-read* (subpath (param "REPO_ROOT")))
         (allow file-read* file-write* (subpath (param "GIT_DIR")))
         (allow file-read* (subpath (param "GIT_CONFIG_DIR")))
 
@@ -662,21 +684,12 @@ let
         #!${pkgs.bashNonInteractive}/bin/bash
         CWD=$(pwd)
         ${conditionalNetworkingParams.warnIgnoredDomainsBashStr}
-        ${warnBashInteractive}
 
         # Ensure stateDirs/stateFiles exist while HOME still points at real home
         ${mkDirsStr}
         ${mkFilesStr}
 
-        if GIT_DIR=$(${pkgs.git}/bin/git rev-parse --path-format=absolute --git-common-dir 2>/dev/null); then
-            GIT_DIR_PARAM="$GIT_DIR"
-            REPO_ROOT=$(dirname "$GIT_DIR_PARAM")
-            REPO_ROOT_PARENT=$(dirname "$REPO_ROOT")
-        else
-            GIT_DIR_PARAM="/nonexistent-git-dir"
-            REPO_ROOT="/nonexistent-repo-root"
-            REPO_ROOT_PARENT="/nonexistent-repo-root"
-        fi
+        ${gitDetectionBashStr}
 
         # Capture real HOME paths before redirecting
         GIT_CONFIG_DIR="$HOME/.config/git"
