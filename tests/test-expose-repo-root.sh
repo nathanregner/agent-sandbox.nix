@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for bindRepoRoot parameter
+# Tests for exposeRepoRoot parameter
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 OS=$(uname)
@@ -26,13 +26,13 @@ git -C "$REPO" config user.email "test@test.com"
 git -C "$REPO" config user.name "Test"
 
 mkdir -p "$REPO/subdir"
-echo "root-file-content" > "$REPO/root-file.txt"
-echo "sub-file-content" > "$REPO/subdir/sub-file.txt"
+echo "root-file-content" >"$REPO/root-file.txt"
+echo "sub-file-content" >"$REPO/subdir/sub-file.txt"
 git -C "$REPO" add -A
 git -C "$REPO" commit -q -m "initial"
 
 # Create an unstaged change in root to verify git diff works
-echo "modified" > "$REPO/root-file.txt"
+echo "modified" >"$REPO/root-file.txt"
 
 # All tests run from the subdirectory
 cd "$REPO/subdir"
@@ -40,11 +40,11 @@ cd "$REPO/subdir"
 run() { "$ACTIVE_SHELL" --norc --noprofile -c "$@" >/dev/null 2>&1; }
 run_output() { "$ACTIVE_SHELL" --norc --noprofile -c "$@" 2>/dev/null; }
 
-echo "=== bindRepoRoot tests ($OS) ==="
+echo "=== exposeRepoRoot tests ($OS) ==="
 echo
 
-# --- bindRepoRoot = true ---
-echo "--- bindRepoRoot = true ---"
+# --- exposeRepoRoot = true ---
+echo "--- exposeRepoRoot = true ---"
 ACTIVE_SHELL="$SHELL_TRUE"
 
 expect_ok "git diff works from subdirectory" "git diff --exit-code --quiet -- ../subdir/sub-file.txt"
@@ -63,9 +63,9 @@ expect_fail "cannot write files outside CWD but inside repo root" "echo test > .
 expect_ok "CWD remains writable" "touch ./test-write && rm ./test-write"
 expect_ok ".git remains writable (git commit works)" "git add -A && git commit --allow-empty -m test-commit"
 
-# --- bindRepoRoot = false ---
+# --- exposeRepoRoot = false ---
 echo
-echo "--- bindRepoRoot = false ---"
+echo "--- exposeRepoRoot = false ---"
 ACTIVE_SHELL="$SHELL_FALSE"
 
 expect_fail "git diff fails without repo access" "git diff"

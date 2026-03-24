@@ -23,7 +23,7 @@ run_suite() {
 run_suite "Basic sandbox tests" "test-basic.sh"
 run_suite "Nix store isolation tests" "test-nix-store-isolation.sh"
 run_suite "Network restriction tests" "test-network.sh"
-run_suite "bindRepoRoot tests" "test-bind-repo-root.sh"
+run_suite "exposeRepoRoot tests" "test-bind-repo-root.sh"
 
 echo
 echo "========================================"
