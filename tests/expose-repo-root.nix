@@ -7,5 +7,4 @@ in sandbox.mkSandbox {
   binName = "bash";
   outName = "sandboxed-bash";
   allowedPackages = [ pkgs.coreutils pkgs.bashNonInteractive pkgs.git ];
-  exposeRepoRoot = true;
 }

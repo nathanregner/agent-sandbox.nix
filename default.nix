@@ -36,7 +36,7 @@ let
            /tmp    — scratch space
            $HOME   — prevents accidental reads of dotfiles; agent state
                       dirs are bind-mounted back on top of this
-         Read-only bind mounts (when exposeRepoRoot = true):
+         Read-only bind mounts:
            $REPO_ROOT  — the git repo root, so git commands and reads of
                          files outside CWD work. CWD and GIT_DIR are
                          mounted rw on top of this.
@@ -44,8 +44,7 @@ let
            $CWD        — the project directory (always)
            stateDirs   — each path gets a --bind (e.g., ~/.config/claude)
            stateFiles  — each path gets a --bind (e.g., specific rc files)
-           $GIT_DIR    — the .git dir, auto-detected; only when
-                         exposeRepoRoot = true. Needed when CWD is a
+           $GIT_DIR    — the .git dir, auto-detected. Needed when CWD is a
                          worktree and .git/common is outside CWD.
          Symlinks:
            /bin/sh -> bash — many scripts assume /bin/sh exists
@@ -86,7 +85,7 @@ let
   */
   mkLinuxSandbox = { pkg, binName, outName, allowedPackages, stateDirs ? [ ]
     , stateFiles ? [ ], extraEnv ? { }, restrictNetwork ? false
-    , allowedDomains ? [ ], exposeRepoRoot ? true }:
+    , allowedDomains ? [ ] }:
     let
       implicitPackages = [ pkgs.cacert bashWrapper ];
       pathStr = pkgs.lib.makeBinPath (allowedPackages ++ implicitPackages);
@@ -158,7 +157,7 @@ let
       closurePathsFile =
         pkgs.writeClosure (allowedPackages ++ implicitPackages ++ [ pkg ]);
 
-      gitDetectionBashStr = if exposeRepoRoot then ''
+      gitDetectionBashStr = ''
         GIT_BIND=""
         REPO_BIND=""
         if GIT_DIR=$(${pkgs.git}/bin/git rev-parse --path-format=absolute --git-common-dir 2>/dev/null); then
@@ -166,9 +165,6 @@ let
           REPO_ROOT=$(dirname "$GIT_DIR")
           REPO_BIND="--ro-bind $REPO_ROOT $REPO_ROOT"
         fi
-      '' else ''
-        GIT_BIND=""
-        REPO_BIND=""
       '';
 
     in pkgs.writeTextFile {
@@ -318,7 +314,7 @@ let
          this, even accessing an allowed subpath can fail with EPERM
          during the stat() of a parent directory.
 
-       Working directory & repo (when exposeRepoRoot = true):
+       Working directory & repo:
          $CWD (subpath)        — full read-write to the project
          $REPO_ROOT (subpath)  — read-only; the repo root, which may
                                  differ from CWD if CWD is a subdirectory
@@ -372,7 +368,7 @@ let
   */
   mkDarwinSandbox = { pkg, binName, outName, allowedPackages, stateDirs ? [ ]
     , stateFiles ? [ ], extraEnv ? { }, restrictNetwork ? false
-    , allowedDomains ? [ ], exposeRepoRoot ? true }:
+    , allowedDomains ? [ ] }:
     let
       implicitPackages = [ pkgs.cacert bashWrapper ];
       pathStr = pkgs.lib.makeBinPath (allowedPackages ++ implicitPackages);
@@ -504,7 +500,7 @@ let
       closurePathsFile =
         pkgs.writeClosure (allowedPackages ++ implicitPackages ++ [ pkg ]);
 
-      gitDetectionBashStr = if exposeRepoRoot then ''
+      gitDetectionBashStr = ''
         if GIT_DIR=$(${pkgs.git}/bin/git rev-parse --path-format=absolute --git-common-dir 2>/dev/null); then
             GIT_DIR_PARAM="$GIT_DIR"
             REPO_ROOT=$(dirname "$GIT_DIR_PARAM")
@@ -514,12 +510,7 @@ let
             REPO_ROOT="/nonexistent-repo-root"
             REPO_ROOT_PARENT="/nonexistent-repo-root"
         fi
-      '' else ''
-        GIT_DIR_PARAM="/nonexistent-git-dir"
-        REPO_ROOT="/nonexistent-repo-root"
-        REPO_ROOT_PARENT="/nonexistent-repo-root"
       '';
-
       # Static seatbelt rules that don't depend on the closure — evaluated at
       # Nix eval time so that Nix interpolations (conditionalNetworkingParams,
       # seatbeltAllowReadWriteExec, etc.) are resolved before being embedded
