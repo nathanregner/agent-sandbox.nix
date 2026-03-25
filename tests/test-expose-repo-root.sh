@@ -6,11 +6,8 @@ OS=$(uname)
 
 source "$SCRIPT_DIR/lib.sh"
 
-SANDBOXED_TRUE=$(nix-build --no-out-link "$SCRIPT_DIR/bind-repo-root-true.nix")
-SHELL_TRUE="$SANDBOXED_TRUE/bin/sandboxed-bash"
-
-SANDBOXED_FALSE=$(nix-build --no-out-link "$SCRIPT_DIR/bind-repo-root-false.nix")
-SHELL_FALSE="$SANDBOXED_FALSE/bin/sandboxed-bash"
+SANDBOXED=$(nix-build --no-out-link "$SCRIPT_DIR/expose-repo-root.nix")
+SHELL="$SANDBOXED/bin/sandboxed-bash"
 
 # Set up a git repo with a subdirectory.
 # IMPORTANT: the repo must NOT be under /tmp, because the sandbox allows
@@ -43,9 +40,7 @@ run_output() { "$ACTIVE_SHELL" --norc --noprofile -c "$@" 2>/dev/null; }
 echo "=== exposeRepoRoot tests ($OS) ==="
 echo
 
-# --- exposeRepoRoot = true ---
-echo "--- exposeRepoRoot = true ---"
-ACTIVE_SHELL="$SHELL_TRUE"
+ACTIVE_SHELL="$SHELL"
 
 expect_ok "git diff works from subdirectory" "git diff --exit-code --quiet -- ../subdir/sub-file.txt"
 
@@ -62,13 +57,6 @@ expect_ok "can read files outside CWD but inside repo root" "cat ../root-file.tx
 expect_fail "cannot write files outside CWD but inside repo root" "echo test > ../outside-cwd.txt"
 expect_ok "CWD remains writable" "touch ./test-write && rm ./test-write"
 expect_ok ".git remains writable (git commit works)" "git add -A && git commit --allow-empty -m test-commit"
-
-# --- exposeRepoRoot = false ---
-echo
-echo "--- exposeRepoRoot = false ---"
-ACTIVE_SHELL="$SHELL_FALSE"
-
-expect_fail "git diff fails without repo access" "git diff"
 
 print_results
 exit_status
