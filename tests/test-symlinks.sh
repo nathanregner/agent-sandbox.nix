@@ -81,6 +81,23 @@ if [ "$OS" = "Linux" ]; then
         "$HOME/.test-state-dir/dup-link-1" \
         "$HOME/.test-state-dir/dup-link-2"
 
+  # --- Test G: stateFile symlink to a deeply nested path outside all bound prefixes ---
+  # /tmp inside the sandbox is an empty tmpfs, so subdirectories don't exist in the
+  # namespace unless bwrap --dir flags create them first.
+  _DEEP_TMP=$(mktemp -d /tmp/sandbox-deep-test.XXXXXX)
+  _DEEP_DIR="$_DEEP_TMP/a/b/c"
+  mkdir -p "$_DEEP_DIR"
+  _DEEP_FILE="$_DEEP_DIR/deep-target"
+  echo "deep content" > "$_DEEP_FILE"
+  rm -f "$HOME/.test-state-file"
+  ln -sfn "$_DEEP_FILE" "$HOME/.test-state-file"
+
+  expect_ok "stateFile symlink to deep path: resolved target is readable" "cat $_DEEP_FILE"
+  expect_ok "stateFile symlink to deep path: resolved target is writable" "echo updated > $_DEEP_FILE"
+
+  rm -rf "$_DEEP_TMP"
+  rm -f "$HOME/.test-state-file"; touch "$HOME/.test-state-file"
+
 elif [ "$OS" = "Darwin" ]; then
   echo "NOTE: Darwin symlink resolution (stateFile/stateDir targets outside \$HOME) is not"
   echo "      implemented in mkDarwinSandbox — Linux-specific tests skipped."
