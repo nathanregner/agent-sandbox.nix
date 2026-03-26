@@ -81,22 +81,19 @@ if [ "$OS" = "Linux" ]; then
         "$HOME/.test-state-dir/dup-link-1" \
         "$HOME/.test-state-dir/dup-link-2"
 
-  # --- Test G: stateFile symlink to a deeply nested path outside all bound prefixes ---
-  # /tmp inside the sandbox is an empty tmpfs, so subdirectories don't exist in the
-  # namespace unless bwrap --dir flags create them first.
-  _DEEP_TMP=$(mktemp -d /tmp/sandbox-deep-test.XXXXXX)
-  _DEEP_DIR="$_DEEP_TMP/a/b/c"
-  mkdir -p "$_DEEP_DIR"
-  _DEEP_FILE="$_DEEP_DIR/deep-target"
-  echo "deep content" > "$_DEEP_FILE"
-  rm -f "$HOME/.test-state-file"
-  ln -sfn "$_DEEP_FILE" "$HOME/.test-state-file"
+  # --- Test H: stateDir contains a multi-hop (double) symlink ---
+  # Mirrors ~/.claude/settings: home-manager creates a chain
+  # ~/.claude/settings -> /nix/var/nix/profiles/.../settings -> /nix/store/...
+  # readlink -f skips the intermediate hop and only binds the final target, so the
+  # kernel hits ENOENT at the intermediate when following the chain inside the sandbox.
+  # _follow_symlink_chain binds every hop so the full chain is traversable.
+  _MID_SYM=$(mktemp -u /tmp/sandbox-chain-sym.XXXXXX)
+  ln -sfn "$REAL_FILE" "$_MID_SYM"
+  ln -sfn "$_MID_SYM" "$HOME/.test-state-dir/double-link"
 
-  expect_ok "stateFile symlink to deep path: resolved target is readable" "cat $_DEEP_FILE"
-  expect_ok "stateFile symlink to deep path: resolved target is writable" "echo updated > $_DEEP_FILE"
+  expect_ok "double symlink in stateDir: chain traversable inside sandbox" "cat \$HOME/.test-state-dir/double-link"
 
-  rm -rf "$_DEEP_TMP"
-  rm -f "$HOME/.test-state-file"; touch "$HOME/.test-state-file"
+  rm -f "$_MID_SYM" "$HOME/.test-state-dir/double-link"
 
 elif [ "$OS" = "Darwin" ]; then
   echo "NOTE: Darwin symlink resolution (stateFile/stateDir targets outside \$HOME) is not"
