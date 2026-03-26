@@ -81,6 +81,20 @@ if [ "$OS" = "Linux" ]; then
         "$HOME/.test-state-dir/dup-link-1" \
         "$HOME/.test-state-dir/dup-link-2"
 
+  # --- Test H: stateDir contains a multi-hop (double) symlink ---
+  # Mirrors ~/.claude/settings: home-manager creates a chain
+  # ~/.claude/settings -> /nix/var/nix/profiles/.../settings -> /nix/store/...
+  # readlink -f skips the intermediate hop and only binds the final target, so the
+  # kernel hits ENOENT at the intermediate when following the chain inside the sandbox.
+  # _follow_symlink_chain binds every hop so the full chain is traversable.
+  _MID_SYM=$(mktemp -u /tmp/sandbox-chain-sym.XXXXXX)
+  ln -sfn "$REAL_FILE" "$_MID_SYM"
+  ln -sfn "$_MID_SYM" "$HOME/.test-state-dir/double-link"
+
+  expect_ok "double symlink in stateDir: chain traversable inside sandbox" "cat \$HOME/.test-state-dir/double-link"
+
+  rm -f "$_MID_SYM" "$HOME/.test-state-dir/double-link"
+
 elif [ "$OS" = "Darwin" ]; then
   echo "NOTE: Darwin symlink resolution (stateFile/stateDir targets outside \$HOME) is not"
   echo "      implemented in mkDarwinSandbox — Linux-specific tests skipped."
