@@ -101,11 +101,12 @@
 
   # Per-roStateFile: if it is a symlink, walk its chain via _follow_symlink_chain;
   # otherwise bind read-only. Appends to RO_STATE_FILE_BINDS at runtime.
+  # Includes --dir for parent to ensure mount point can be created inside tmpfs HOME.
   mkResolveRoFileBashStr = file: ''
     if [[ -L "${file}" ]]; then
       _follow_symlink_chain "${file}"
     else
-      RO_STATE_FILE_BINDS="$RO_STATE_FILE_BINDS --ro-bind ${file} ${file}"
+      RO_STATE_FILE_BINDS="$RO_STATE_FILE_BINDS --dir $(dirname ${file}) --ro-bind ${file} ${file}"
     fi
   '';
 

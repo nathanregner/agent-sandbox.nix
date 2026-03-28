@@ -77,7 +77,8 @@ let
 
          Read-only bind mounts:
            /nix/store/<hash>-... — only the closure of allowedPackages
-                     and pkg, not the entire nix store
+                     and pkg (when isolateNixStore = true, the default).
+                     Set isolateNixStore = false to bind the entire store.
            /etc/passwd   — user identity for programs that need it
            /etc/resolv.conf — DNS resolution
            /etc/ssl/certs   — TLS certificate verification
@@ -144,8 +145,8 @@ let
   */
   mkLinuxSandbox = { pkg, binName, outName, allowedPackages, stateDirs ? [ ]
     , stateFiles ? [ ], roStateDirs ? [ ], roStateFiles ? [ ]
-    , overlayStateDirs ? [ ], extraEnv ? { }, restrictNetwork ? false
-    , allowedDomains ? [ ] }:
+    , overlayStateDirs ? [ ], extraEnv ? { }, isolateNixStore ? true
+    , restrictNetwork ? false, allowedDomains ? [ ] }:
     let
       implicitPackages = [ pkgs.cacert bashWrapper ];
       pathStr = pkgs.lib.makeBinPath (allowedPackages ++ implicitPackages);
@@ -169,8 +170,9 @@ let
       # Overlay mounts: read from host, writes go to ephemeral tmpfs
       # Uses --overlay-src to set the lower layer, then --tmp-overlay to create
       # the mount with a tmpfs-backed upper layer
+      # Need --dir first to create mount points inside the tmpfs HOME
       overlayDirsStr = builtins.concatStringsSep " "
-        (map (dir: ''--overlay-src "${dir}" --tmp-overlay "${dir}"'') overlayStateDirs);
+        (map (dir: ''--dir "${dir}" --overlay-src "${dir}" --tmp-overlay "${dir}"'') overlayStateDirs);
       # Adds each overlayStateDir to the BOUND_PREFIXES shell array at runtime
       overlayStateDirsBoundPrefixBashStr = builtins.concatStringsSep "\n"
         (map (dir: ''BOUND_PREFIXES+=("${dir}")'') overlayStateDirs);
@@ -209,13 +211,19 @@ let
         (map symlinkHelpers.mkScanDirBashStr roStateDirs)}
 
         # Scan overlayStateDirs for internal symlinks and bind their resolved targets
-        ${builtins.concatStringsSep "\n" (map symlinkHelpers.mkScanDirBashStr overlayStateDirs)}
->>>>>>> 7132f25 (hack: overlayfs mount)
+        ${builtins.concatStringsSep "\n"
+        (map symlinkHelpers.mkScanDirBashStr overlayStateDirs)}
       '';
 
+      # Handle PATH specially: merge extraEnv.PATH with allowedPackages PATH
+      extraEnvWithoutPath =
+        builtins.removeAttrs extraEnv [ "PATH" ];
       extraEnvStr = builtins.concatStringsSep " "
-        (map (name: "--setenv ${name} ${builtins.toJSON extraEnv.${name}}")
-          (builtins.attrNames extraEnv));
+        (map (name: "--setenv ${name} ${builtins.toJSON extraEnvWithoutPath.${name}}")
+          (builtins.attrNames extraEnvWithoutPath));
+      # Merge PATH: extraEnv.PATH (if any) comes first for priority
+      mergedPathStr =
+        if extraEnv ? PATH then "${extraEnv.PATH}:${pathStr}" else pathStr;
       # Route-restriction script runs inside pasta's namespace (before bwrap).
       # Removes the default route and adds a host-only route so the namespace
       # can only reach the host machine (where the proxy listens), not the
@@ -278,6 +286,29 @@ let
       closurePathsFile =
         pkgs.writeClosure (allowedPackages ++ implicitPackages ++ [ pkg ]);
 
+      # Nix store handling: isolated (per-path binds) vs full access
+      nixStoreParams = if isolateNixStore then {
+        setupBashStr = ''
+          # Build per-path ro-bind flags for the nix store closure
+          CLOSURE_BINDS=""
+          BOUND_PREFIXES=()
+          while IFS= read -r storePath; do
+            CLOSURE_BINDS="$CLOSURE_BINDS --ro-bind $storePath $storePath"
+            BOUND_PREFIXES+=("$storePath")
+          done < ${closurePathsFile}
+        '';
+        bwrapFlags = ''
+          --tmpfs /nix/store \
+          $CLOSURE_BINDS \'';
+      } else {
+        setupBashStr = ''
+          # Full nix store access — no isolation
+          BOUND_PREFIXES=("/nix/store")
+        '';
+        bwrapFlags = ''
+          --ro-bind /nix/store /nix/store \'';
+      };
+
       gitDetectionBashStr = ''
         GIT_BIND=""
         REPO_BIND=""
@@ -300,21 +331,14 @@ let
         ${mkFilesStr}
         ${gitDetectionBashStr}
 
-        # Build per-path ro-bind flags for the nix store closure
-        CLOSURE_BINDS=""
-        BOUND_PREFIXES=()
-        while IFS= read -r storePath; do
-          CLOSURE_BINDS="$CLOSURE_BINDS --ro-bind $storePath $storePath"
-          BOUND_PREFIXES+=("$storePath")
-        done < ${closurePathsFile}
+        ${nixStoreParams.setupBashStr}
 
         ${symlinkResolutionBashStr}
         ${conditionalNetworkingParams.proxyStartupBashStr}
         ${conditionalNetworkingParams.bashTrapCleanupStr}
         ${conditionalNetworkingParams.sandboxExecBashStr}${pkgs.bubblewrap}/bin/bwrap \
           ${conditionalNetworkingParams.etcResolvBind} \
-          --tmpfs /nix/store \
-          $CLOSURE_BINDS \
+          ${nixStoreParams.bwrapFlags}
           --ro-bind /etc/passwd /etc/passwd \
           --ro-bind-try /etc/ssl/certs /etc/ssl/certs \
           --ro-bind-try /etc/static /etc/static \
@@ -345,7 +369,7 @@ let
           --setenv HOME "$HOME" \
           --setenv TERM "$TERM" \
           --setenv SHELL "${bashWrapper}/bin/bash" \
-          --setenv PATH "${pathStr}" \
+          --setenv PATH "${mergedPathStr}" \
           --setenv SSL_CERT_DIR "${pkgs.cacert}/etc/ssl/certs" \
           --setenv TMPDIR /tmp \
           ${conditionalNetworkingParams.sslCertEnvBubblewrapStr} \
@@ -501,7 +525,7 @@ let
   */
   mkDarwinSandbox = { pkg, binName, outName, allowedPackages, stateDirs ? [ ]
     , stateFiles ? [ ], roStateDirs ? [ ], roStateFiles ? [ ], extraEnv ? { }
-    , restrictNetwork ? false, allowedDomains ? [ ] }:
+    , isolateNixStore ? true, restrictNetwork ? false, allowedDomains ? [ ] }:
     let
       implicitPackages = [ pkgs.cacert bashWrapper ];
       pathStr = pkgs.lib.makeBinPath (allowedPackages ++ implicitPackages);
@@ -596,9 +620,15 @@ let
       mkFilesStr = builtins.concatStringsSep "\n"
         (map (file: ''touch "${file}"'') stateFiles);
 
+      # Handle PATH specially: merge extraEnv.PATH with allowedPackages PATH
+      extraEnvWithoutPath =
+        builtins.removeAttrs extraEnv [ "PATH" ];
       extraEnvInlineStr = builtins.concatStringsSep " \\\n        "
-        (map (name: "${name}=${builtins.toJSON extraEnv.${name}}")
-          (builtins.attrNames extraEnv));
+        (map (name: "${name}=${builtins.toJSON extraEnvWithoutPath.${name}}")
+          (builtins.attrNames extraEnvWithoutPath));
+      # Merge PATH: extraEnv.PATH (if any) comes first for priority
+      mergedPathStr =
+        if extraEnv ? PATH then "${extraEnv.PATH}:${pathStr}" else pathStr;
 
       conditionalNetworkingParams = if restrictNetwork then
         let allowlistFileStr = mkAllowlistFile allowedDomains;
@@ -695,22 +725,31 @@ let
         allowReadOnlyFilesStr = seatbeltAllowReadOnlyFiles;
       };
 
-      seatbeltProfile = pkgs.runCommand "${outName}-sandbox.sb" {
-        closurePaths = closurePathsFile;
-        staticRules = seatbeltStaticRules;
-      } ''
-        {
-          echo "$staticRules"
+      seatbeltProfile = if isolateNixStore then
+        pkgs.runCommand "${outName}-sandbox.sb" {
+          closurePaths = closurePathsFile;
+          staticRules = seatbeltStaticRules;
+        } ''
+          {
+            echo "$staticRules"
 
-          echo ""
-          echo "    ;; Nix store — only closure of allowed packages"
+            echo ""
+            echo "    ;; Nix store — only closure of allowed packages"
 
-          while IFS= read -r storePath; do
-            echo "    (allow file-read* (subpath \"$storePath\"))"
-            echo "    (allow process-exec (subpath \"$storePath\"))"
-          done < "$closurePaths"
-        } > $out
-      '';
+            while IFS= read -r storePath; do
+              echo "    (allow file-read* (subpath \"$storePath\"))"
+              echo "    (allow process-exec (subpath \"$storePath\"))"
+            done < "$closurePaths"
+          } > $out
+        ''
+      else
+        # Full nix store access — no isolation
+        pkgs.writeText "${outName}-sandbox.sb" ''
+          ${seatbeltStaticRules}
+
+              ;; Nix store — full access (isolateNixStore = false)
+              (allow process-exec (subpath "/nix/store"))
+        '';
 
     in pkgs.writeTextFile {
       name = outName;
@@ -761,7 +800,7 @@ let
           HOME="$SANDBOX_HOME" \
           TERM="$TERM" \
           SHELL="${bashWrapper}/bin/bash" \
-          PATH="${pathStr}" \
+          PATH="${mergedPathStr}" \
           SSL_CERT_DIR="${pkgs.cacert}/etc/ssl/certs" \
           GIT_CONFIG_DIR="$GIT_CONFIG_DIR" \
           TMPDIR=/tmp \
