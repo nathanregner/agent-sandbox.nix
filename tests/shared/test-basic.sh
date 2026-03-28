@@ -2,6 +2,7 @@
 # Basic sandbox isolation and access tests (shared across platforms)
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+OS=$(uname)
 
 source "$SCRIPT_DIR/../lib.sh"
 
@@ -14,13 +15,19 @@ run_output() { "$SHELL" --norc --noprofile -c "$@" 2>/dev/null; }
 TESTDIR_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)/.tmp-test"
 mkdir -p "$TESTDIR_ROOT"
 TESTDIR=$(mktemp -d "$TESTDIR_ROOT/basic.XXXXXX")
-trap 'rm -rf "$TESTDIR" "$HOME/.test-ro-dir" "$HOME/.test-ro-file"' EXIT
+trap 'rm -rf "$TESTDIR" "$HOME/.test-ro-dir" "$HOME/.test-ro-file" "$HOME/.test-overlay-dir"' EXIT
 cd "$TESTDIR"
 
 # Create read-only test fixtures (must exist before sandbox runs)
 mkdir -p "$HOME/.test-ro-dir"
 echo "ro-dir-content" > "$HOME/.test-ro-dir/test-file"
 echo "ro-file-content" > "$HOME/.test-ro-file"
+
+# Create overlay test fixture (Linux only, must exist before sandbox runs)
+if [ "$OS" = "Linux" ]; then
+	mkdir -p "$HOME/.test-overlay-dir"
+	echo "overlay-original" > "$HOME/.test-overlay-dir/original-file"
+fi
 
 echo "=== Basic sandbox tests (shared) ==="
 echo
@@ -84,6 +91,40 @@ expect_fail "cannot write to roStateFile" "echo test >> \$HOME/.test-ro-file"
 expect_ok "home is empty tmpfs" "ls \$HOME"
 expect_ok "home tmpfs is writable (ephemeral)" "touch \$HOME/.test-write && rm \$HOME/.test-write"
 expect_fail "host dotfiles are not visible" "ls \$HOME/.bashrc"
+
+# --- Platform-specific ---
+if [ "$OS" = "Darwin" ]; then
+	expect_fail "cannot write to /etc" "touch /etc/test"
+	expect_ok "can exec /bin/sh subshell" "/bin/sh -c 'echo hello'"
+	REAL_HOME="/Users/$(whoami)"
+	expect_fail "cannot read real home" "ls $REAL_HOME/.ssh"
+elif [ "$OS" = "Linux" ]; then
+	expect_ok "/etc is writable tmpfs (ephemeral)" "touch /etc/test && rm /etc/test"
+	expect_fail "cannot read host /etc/shadow" "cat /etc/shadow"
+
+	# --- Overlay state dirs (Linux only) ---
+	# Verify overlayStateDir can read existing content
+	if [ "$(run_output 'cat $HOME/.test-overlay-dir/original-file')" = "overlay-original" ]; then
+		echo "PASS: overlayStateDir can read existing content"
+		PASS=$((PASS + 1))
+	else
+		echo "FAIL: overlayStateDir cannot read existing content"
+		FAIL=$((FAIL + 1))
+	fi
+
+	# Verify writes work inside the sandbox
+	expect_ok "overlayStateDir is writable in sandbox" "echo new-content > \$HOME/.test-overlay-dir/new-file && cat \$HOME/.test-overlay-dir/new-file"
+
+	# Verify writes don't persist to host
+	run 'echo modified > $HOME/.test-overlay-dir/original-file'
+	if [ "$(cat "$HOME/.test-overlay-dir/original-file")" = "overlay-original" ]; then
+		echo "PASS: overlayStateDir writes don't persist to host"
+		PASS=$((PASS + 1))
+	else
+		echo "FAIL: overlayStateDir writes leaked to host"
+		FAIL=$((FAIL + 1))
+	fi
+fi
 
 print_results
 exit_status

@@ -98,6 +98,13 @@ let
            stateFiles  — each path gets a --bind (e.g., specific rc files)
            $GIT_DIR    — the .git dir, auto-detected. Needed when CWD is a
                          worktree and .git/common is outside CWD.
+         Overlay mounts (copy-on-write):
+           overlayStateDirs — each path gets a --tmp-overlay mount. The host
+                              directory is visible read-only as the lower layer;
+                              writes go to a tmpfs upper layer that's discarded
+                              on exit. Useful for caches like ~/.cargo where you
+                              want read access to existing data but don't want
+                              sandbox writes to "poison" the host cache.
          Symlinks:
            /bin/sh -> bash — many scripts assume /bin/sh exists
 
@@ -136,8 +143,9 @@ let
            need to bind-mount the real paths.
   */
   mkLinuxSandbox = { pkg, binName, outName, allowedPackages, stateDirs ? [ ]
-    , stateFiles ? [ ], roStateDirs ? [ ], roStateFiles ? [ ], extraEnv ? { }
-    , restrictNetwork ? false, allowedDomains ? [ ] }:
+    , stateFiles ? [ ], roStateDirs ? [ ], roStateFiles ? [ ]
+    , overlayStateDirs ? [ ], extraEnv ? { }, restrictNetwork ? false
+    , allowedDomains ? [ ] }:
     let
       implicitPackages = [ pkgs.cacert bashWrapper ];
       pathStr = pkgs.lib.makeBinPath (allowedPackages ++ implicitPackages);
@@ -158,6 +166,14 @@ let
       # Adds each roStateDir to the BOUND_PREFIXES shell array at runtime
       roStateDirsBoundPrefixBashStr = builtins.concatStringsSep "\n"
         (map (dir: ''BOUND_PREFIXES+=("${dir}")'') roStateDirs);
+      # Overlay mounts: read from host, writes go to ephemeral tmpfs
+      # Uses --overlay-src to set the lower layer, then --tmp-overlay to create
+      # the mount with a tmpfs-backed upper layer
+      overlayDirsStr = builtins.concatStringsSep " "
+        (map (dir: ''--overlay-src "${dir}" --tmp-overlay "${dir}"'') overlayStateDirs);
+      # Adds each overlayStateDir to the BOUND_PREFIXES shell array at runtime
+      overlayStateDirsBoundPrefixBashStr = builtins.concatStringsSep "\n"
+        (map (dir: ''BOUND_PREFIXES+=("${dir}")'') overlayStateDirs);
 
       symlinkHelpers = import ./lib/symlink-helpers.nix { inherit pkgs; };
 
@@ -165,6 +181,7 @@ let
         # Complete the set of already-bound path prefixes
         ${stateDirsBoundPrefixBashStr}
         ${roStateDirsBoundPrefixBashStr}
+        ${overlayStateDirsBoundPrefixBashStr}
         BOUND_PREFIXES+=("$CWD")
         BOUND_PREFIXES+=("/etc/resolv.conf" "/etc/passwd" "/etc/ssl/certs" "/etc/static" "/etc/pki")
         [[ -n "$REPO_ROOT" ]] && BOUND_PREFIXES+=("$REPO_ROOT")
@@ -190,6 +207,10 @@ let
         # Scan roStateDirs for internal symlinks and bind their resolved targets
         ${builtins.concatStringsSep "\n"
         (map symlinkHelpers.mkScanDirBashStr roStateDirs)}
+
+        # Scan overlayStateDirs for internal symlinks and bind their resolved targets
+        ${builtins.concatStringsSep "\n" (map symlinkHelpers.mkScanDirBashStr overlayStateDirs)}
+>>>>>>> 7132f25 (hack: overlayfs mount)
       '';
 
       extraEnvStr = builtins.concatStringsSep " "
@@ -306,6 +327,7 @@ let
           --bind "$CWD" "$CWD" \
           ${bindDirsStr} \
           ${roBindDirsStr} \
+          ${overlayDirsStr} \
           $STATE_FILE_BINDS \
           $RO_STATE_FILE_BINDS \
           $SYMLINK_PARENT_DIRS \
