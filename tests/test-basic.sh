@@ -15,8 +15,13 @@ run_output() { "$SHELL" --norc --noprofile -c "$@" 2>/dev/null; }
 TESTDIR_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)/.tmp-test"
 mkdir -p "$TESTDIR_ROOT"
 TESTDIR=$(mktemp -d "$TESTDIR_ROOT/basic.XXXXXX")
-trap 'rm -rf "$TESTDIR"' EXIT
+trap 'rm -rf "$TESTDIR" "$HOME/.test-ro-dir" "$HOME/.test-ro-file"' EXIT
 cd "$TESTDIR"
+
+# Create read-only test fixtures (must exist before sandbox runs)
+mkdir -p "$HOME/.test-ro-dir"
+echo "ro-dir-content" > "$HOME/.test-ro-dir/test-file"
+echo "ro-file-content" > "$HOME/.test-ro-file"
 
 echo "=== Basic sandbox tests ($OS) ==="
 echo
@@ -50,6 +55,31 @@ else
 	echo "FAIL: host env var leaked into sandbox"
 	FAIL=$((FAIL + 1))
 fi
+
+# --- Read-only state dirs/files ---
+# Verify roStateDirs can be read
+if [ "$(run_output 'cat $HOME/.test-ro-dir/test-file')" = "ro-dir-content" ]; then
+	echo "PASS: roStateDir is readable"
+	PASS=$((PASS + 1))
+else
+	echo "FAIL: roStateDir not readable"
+	FAIL=$((FAIL + 1))
+fi
+
+# Verify roStateFiles can be read
+if [ "$(run_output 'cat $HOME/.test-ro-file')" = "ro-file-content" ]; then
+	echo "PASS: roStateFile is readable"
+	PASS=$((PASS + 1))
+else
+	echo "FAIL: roStateFile not readable"
+	FAIL=$((FAIL + 1))
+fi
+
+# Verify writes to roStateDir fail
+expect_fail "cannot write to roStateDir" "touch \$HOME/.test-ro-dir/new-file"
+
+# Verify writes to roStateFile fail
+expect_fail "cannot write to roStateFile" "echo test >> \$HOME/.test-ro-file"
 
 # --- Ephemeral HOME (both platforms) ---
 expect_ok "home is empty tmpfs" "ls \$HOME"

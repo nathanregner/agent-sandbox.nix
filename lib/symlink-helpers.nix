@@ -88,6 +88,16 @@
     fi
   '';
 
+  # Per-roStateFile: if it is a symlink, walk its chain via _follow_symlink_chain;
+  # otherwise bind read-only. Appends to RO_STATE_FILE_BINDS at runtime.
+  mkResolveRoFileBashStr = file: ''
+    if [[ -L "${file}" ]]; then
+      _follow_symlink_chain "${file}"
+    else
+      RO_STATE_FILE_BINDS="$RO_STATE_FILE_BINDS --ro-bind ${file} ${file}"
+    fi
+  '';
+
   # Per-stateDir: recursively scan for symlinks inside the bound dir and walk
   # each symlink chain via _follow_symlink_chain.
   mkScanDirBashStr = dir: ''

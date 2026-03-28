@@ -3,10 +3,13 @@
 # by the runCommand builder in default.nix.
 #
 # Arguments:
-#   networkRulesStr      — (allow network*) or restricted-proxy rules
+#   networkRulesStr       — (allow network*) or restricted-proxy rules
 #   allowReadWriteExecStr — per-stateDir allow rules  (subpath, file-read/write/exec)
-#   allowFilesStr        — per-stateFile allow rules  (literal, file-read/write)
-{ networkRulesStr, allowReadWriteExecStr, allowFilesStr }:
+#   allowFilesStr         — per-stateFile allow rules  (literal, file-read/write)
+#   allowReadOnlyDirsStr  — per-roStateDir allow rules (subpath, file-read only)
+#   allowReadOnlyFilesStr — per-roStateFile allow rules (literal, file-read only)
+{ networkRulesStr, allowReadWriteExecStr, allowFilesStr
+, allowReadOnlyDirsStr ? "", allowReadOnlyFilesStr ? "" }:
 ''
   (version 1)
   (deny default)
@@ -140,4 +143,8 @@
   ;; Explicit state directories & files
   ${allowReadWriteExecStr}
   ${allowFilesStr}
+
+  ;; Read-only state directories & files
+  ${allowReadOnlyDirsStr}
+  ${allowReadOnlyFilesStr}
 ''

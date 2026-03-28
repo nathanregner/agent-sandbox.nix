@@ -108,8 +108,8 @@ let
            need to bind-mount the real paths.
   */
   mkLinuxSandbox = { pkg, binName, outName, allowedPackages, stateDirs ? [ ]
-    , stateFiles ? [ ], extraEnv ? { }, restrictNetwork ? false
-    , allowedDomains ? [ ] }:
+    , stateFiles ? [ ], roStateDirs ? [ ], roStateFiles ? [ ], extraEnv ? { }
+    , restrictNetwork ? false, allowedDomains ? [ ] }:
     let
       implicitPackages = [ pkgs.cacert bashWrapper ];
       pathStr = pkgs.lib.makeBinPath (allowedPackages ++ implicitPackages);
@@ -119,15 +119,22 @@ let
         (map (file: ''touch "${file}"'') stateFiles);
       bindDirsStr = builtins.concatStringsSep " "
         (map (dir: ''--bind "${dir}" "${dir}"'') stateDirs);
+      # Read-only bind mounts for roStateDirs
+      roBindDirsStr = builtins.concatStringsSep " "
+        (map (dir: ''--ro-bind "${dir}" "${dir}"'') roStateDirs);
       # Adds each stateDir to the BOUND_PREFIXES shell array at runtime
       stateDirsBoundPrefixBashStr = builtins.concatStringsSep "\n"
         (map (dir: ''BOUND_PREFIXES+=("${dir}")'') stateDirs);
+      # Adds each roStateDir to the BOUND_PREFIXES shell array at runtime
+      roStateDirsBoundPrefixBashStr = builtins.concatStringsSep "\n"
+        (map (dir: ''BOUND_PREFIXES+=("${dir}")'') roStateDirs);
 
       symlinkHelpers = import ./lib/symlink-helpers.nix { inherit pkgs; };
 
       symlinkResolutionBashStr = ''
         # Complete the set of already-bound path prefixes
         ${stateDirsBoundPrefixBashStr}
+        ${roStateDirsBoundPrefixBashStr}
         BOUND_PREFIXES+=("$CWD")
         BOUND_PREFIXES+=("/etc/resolv.conf" "/etc/passwd" "/etc/ssl/certs" "/etc/static" "/etc/pki")
         [[ -n "$REPO_ROOT" ]] && BOUND_PREFIXES+=("$REPO_ROOT")
@@ -141,8 +148,15 @@ let
         STATE_FILE_BINDS=""
         ${builtins.concatStringsSep "\n" (map symlinkHelpers.mkResolveFileBashStr stateFiles)}
 
+        # Resolve roStateFile symlinks — bind resolved targets read-only
+        RO_STATE_FILE_BINDS=""
+        ${builtins.concatStringsSep "\n" (map symlinkHelpers.mkResolveRoFileBashStr roStateFiles)}
+
         # Scan stateDirs for internal symlinks and bind their resolved targets
         ${builtins.concatStringsSep "\n" (map symlinkHelpers.mkScanDirBashStr stateDirs)}
+
+        # Scan roStateDirs for internal symlinks and bind their resolved targets
+        ${builtins.concatStringsSep "\n" (map symlinkHelpers.mkScanDirBashStr roStateDirs)}
       '';
 
       extraEnvStr = builtins.concatStringsSep " "
@@ -232,7 +246,9 @@ let
           $REPO_BIND \
           --bind "$CWD" "$CWD" \
           ${bindDirsStr} \
+          ${roBindDirsStr} \
           $STATE_FILE_BINDS \
+          $RO_STATE_FILE_BINDS \
           $SYMLINK_PARENT_DIRS \
           $readonlyStateFileSymlinks \
           $readWriteStateFileSymlinks \
@@ -400,8 +416,8 @@ let
        sandboxing on macOS.
   */
   mkDarwinSandbox = { pkg, binName, outName, allowedPackages, stateDirs ? [ ]
-    , stateFiles ? [ ], extraEnv ? { }, restrictNetwork ? false
-    , allowedDomains ? [ ] }:
+    , stateFiles ? [ ], roStateDirs ? [ ], roStateFiles ? [ ], extraEnv ? { }
+    , restrictNetwork ? false, allowedDomains ? [ ] }:
     let
       implicitPackages = [ pkgs.cacert bashWrapper ];
       pathStr = pkgs.lib.makeBinPath (allowedPackages ++ implicitPackages);
@@ -417,6 +433,17 @@ let
         path = builtins.elemAt stateFiles i;
       }) (builtins.length stateFiles);
 
+      # Read-only state dirs/files params
+      roStateDirParams = builtins.genList (i: {
+        name = "RO_STATE_DIR_${toString i}";
+        path = builtins.elemAt roStateDirs i;
+      }) (builtins.length roStateDirs);
+
+      roStateFileParams = builtins.genList (i: {
+        name = "RO_STATE_FILE_${toString i}";
+        path = builtins.elemAt roStateFiles i;
+      }) (builtins.length roStateFiles);
+
       # For the .sb file
       seatbeltAllowReadWriteExec = builtins.concatStringsSep "\n" (map (p: ''
         (allow file-read* file-write* (subpath (param "${p.name}")))
@@ -426,6 +453,16 @@ let
         (p: ''(allow file-read* file-write* (literal (param "${p.name}")))'')
         stateFileParams);
 
+      # Read-only dirs: file-read* only (no file-write*)
+      seatbeltAllowReadOnlyDirs = builtins.concatStringsSep "\n" (map
+        (p: ''(allow file-read* (subpath (param "${p.name}")))'')
+        roStateDirParams);
+
+      # Read-only files: file-read* only (no file-write*)
+      seatbeltAllowReadOnlyFiles = builtins.concatStringsSep "\n" (map
+        (p: ''(allow file-read* (literal (param "${p.name}")))'')
+        roStateFileParams);
+
       # For the wrapper's sandbox-exec invocation — use resolved shell vars
       stateDirFlags = builtins.concatStringsSep " \\\n  "
         (map (p: ''-D ${p.name}="$_RESOLVED_${p.name}"'') stateDirParams);
@@ -433,12 +470,26 @@ let
       stateFileFlags = builtins.concatStringsSep " \\\n  "
         (map (p: ''-D ${p.name}="$_RESOLVED_${p.name}"'') stateFileParams);
 
+      # -D flags for read-only state paths
+      roStateDirFlags = builtins.concatStringsSep " \\\n  "
+        (map (p: ''-D ${p.name}="$_RESOLVED_${p.name}"'') roStateDirParams);
+
+      roStateFileFlags = builtins.concatStringsSep " \\\n  "
+        (map (p: ''-D ${p.name}="$_RESOLVED_${p.name}"'') roStateFileParams);
+
       # Resolve stateDirs/stateFiles while HOME is still real
       resolveStateDirsStr = builtins.concatStringsSep "\n"
         (map (p: ''_RESOLVED_${p.name}="${p.path}"'') stateDirParams);
 
       resolveStateFilesStr = builtins.concatStringsSep "\n"
         (map (p: ''_RESOLVED_${p.name}="${p.path}"'') stateFileParams);
+
+      # Resolve roStateDirs/roStateFiles while HOME is still real
+      resolveRoStateDirsStr = builtins.concatStringsSep "\n"
+        (map (p: ''_RESOLVED_${p.name}="${p.path}"'') roStateDirParams);
+
+      resolveRoStateFilesStr = builtins.concatStringsSep "\n"
+        (map (p: ''_RESOLVED_${p.name}="${p.path}"'') roStateFileParams);
 
       # Symlink resolved state paths into the sandbox HOME so that
       # $HOME-relative lookups land on the real paths. Only creates
@@ -453,6 +504,8 @@ let
 
       symlinkStateDirsStr = mkSymlinkHomeMappingStr stateDirParams;
       symlinkStateFilesStr = mkSymlinkHomeMappingStr stateFileParams;
+      symlinkRoStateDirsStr = mkSymlinkHomeMappingStr roStateDirParams;
+      symlinkRoStateFilesStr = mkSymlinkHomeMappingStr roStateFileParams;
 
       mkDirsStr = builtins.concatStringsSep "\n"
         (map (dir: ''mkdir -p "${dir}"'') stateDirs);
@@ -524,6 +577,8 @@ let
         networkRulesStr = conditionalNetworkingParams.networkSeatbeltRulesStr;
         allowReadWriteExecStr = seatbeltAllowReadWriteExec;
         allowFilesStr = seatbeltAllowFiles;
+        allowReadOnlyDirsStr = seatbeltAllowReadOnlyDirs;
+        allowReadOnlyFilesStr = seatbeltAllowReadOnlyFiles;
       };
 
       seatbeltProfile = pkgs.runCommand "${outName}-sandbox.sb" {
@@ -564,6 +619,8 @@ let
         # Resolve stateDirs/stateFiles paths while $HOME still points at real home
         ${resolveStateDirsStr}
         ${resolveStateFilesStr}
+        ${resolveRoStateDirsStr}
+        ${resolveRoStateFilesStr}
 
         # Create an ephemeral HOME so subprocesses don't touch the real home.
         # Lives under /tmp which is already allowed read-write in the profile.
@@ -574,6 +631,8 @@ let
         # reach the real paths through the Seatbelt-allowed targets.
         ${symlinkStateDirsStr}
         ${symlinkStateFilesStr}
+        ${symlinkRoStateDirsStr}
+        ${symlinkRoStateFilesStr}
 
         ${conditionalNetworkingParams.proxyStartupBashStr}
         ${conditionalNetworkingParams.bashTrapCleanupStr}
@@ -604,7 +663,7 @@ let
           -D HOME_CACHE="$SANDBOX_HOME/.cache" \
           -D HOME_LOCAL="$SANDBOX_HOME/.local" \
           -D HOME_LOCAL_STATE="$SANDBOX_HOME/.local/state" \
-          -D HOME_LOCAL_SHARE="$SANDBOX_HOME/.local/share" ${stateDirFlags} ${stateFileFlags} \
+          -D HOME_LOCAL_SHARE="$SANDBOX_HOME/.local/share" ${stateDirFlags} ${stateFileFlags} ${roStateDirFlags} ${roStateFileFlags} \
           ${pkg}/bin/${binName} "$@"
       '';
     };
