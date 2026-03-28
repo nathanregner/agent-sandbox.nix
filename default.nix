@@ -129,9 +129,10 @@ let
       bindDirsStr = builtins.concatStringsSep " "
         (map (dir: ''--bind "${dir}" "${dir}"'') stateDirs);
       # Read-only bind mounts for roStateDirs
-      # Need --dir first to create mount points inside the tmpfs HOME
+      # Create parent dir only (not the path itself, which may be a symlink)
       roBindDirsStr = builtins.concatStringsSep " "
-        (map (dir: ''--dir "${dir}" --ro-bind "${dir}" "${dir}"'') roStateDirs);
+        (map (dir: let parent = builtins.dirOf dir; in
+          ''--dir "${parent}" --ro-bind "${dir}" "${dir}"'') roStateDirs);
       # Adds each stateDir to the BOUND_PREFIXES shell array at runtime
       stateDirsBoundPrefixBashStr = builtins.concatStringsSep "\n"
         (map (dir: ''BOUND_PREFIXES+=("${dir}")'') stateDirs);
