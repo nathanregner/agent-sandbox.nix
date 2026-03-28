@@ -9,5 +9,7 @@ in sandbox.mkSandbox {
   allowedPackages = [ pkgs.coreutils ];
   stateDirs = [ "$HOME/.test-state-dir" ];
   stateFiles = [ "$HOME/.test-state-file" ];
+  roStateDirs = [ "$HOME/.test-ro-dir" ];
+  roStateFiles = [ "$HOME/.test-ro-file" ];
   extraEnv = { TEST_VAR = "test-value"; };
 }
