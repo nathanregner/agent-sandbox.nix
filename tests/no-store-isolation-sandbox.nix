@@ -9,6 +9,10 @@ in sandbox.mkSandbox {
   outName = "sandboxed-bash-no-store-isolation";
   allowedPackages = [ pkgs.coreutils pkgs.bashNonInteractive ];
   isolateNixStore = false;
+  roStateDirs = [
+    "$HOME/.local/state/nix"
+    "$HOME/.nix-profile"
+  ];
   # Pass nix path so test can find it, but it's not in allowedPackages
   extraEnv = { NIX_BIN = "${pkgs.nix}/bin/nix"; };
 }
