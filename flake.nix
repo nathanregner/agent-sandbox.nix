@@ -16,6 +16,16 @@
       lib = forAllSystems (system:
         let pkgs = import nixpkgs { system = system; };
         in import ./. { pkgs = pkgs; });
+      templates.claude = {
+        path = ./templates/claude;
+        description =
+          "Dev shell with a sandboxed Claude Code binary";
+      };
+      templates.copilot = {
+        path = ./templates/copilot;
+        description =
+          "Dev shell with a sandboxed GitHub Copilot CLI binary";
+      };
       checks = forAllSystems (system:
         let
           mkSandbox = self.lib.${system}.mkSandbox;
