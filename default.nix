@@ -14,28 +14,22 @@ let
       --add-flags "--norc" \
       --add-flags "--noprofile"
   '';
-  # Serializes allowedDomains to a tab-delimited config file for the proxy.
+  # Serializes allowedDomains to a JSON config file for the proxy.
   # Accepts two formats:
   #   List (backward compat): [ "github.com" "anthropic.com" ]
   #     → every domain gets "*" (all methods allowed)
   #   Attrset (per-domain method control):
   #     { "*" = [ "GET" "HEAD" ]; "api.anthropic.com" = "*"; }
-  #     → tab-delimited: domain<TAB>methods
+  # Output JSON: { "domain": "*" | ["GET","HEAD"], ... }
   mkAllowlistFile = allowedDomains:
     let
-      content = if builtins.isList allowedDomains then
-        builtins.concatStringsSep "\n"
-          (map (d: "${d}\t*") allowedDomains) + "\n"
+      attrset = if builtins.isList allowedDomains then
+        builtins.listToAttrs
+          (map (d: { name = d; value = "*"; }) allowedDomains)
       else
-        builtins.concatStringsSep "\n"
-          (map (d:
-            let methods = allowedDomains.${d};
-            in "${d}\t${
-              if builtins.isString methods then methods
-              else builtins.concatStringsSep "," methods
-            }")
-          (builtins.attrNames allowedDomains)) + "\n";
-    in pkgs.writeText "sandbox-allowlist" content;
+        allowedDomains;
+    in pkgs.writeText "sandbox-allowlist.json"
+      (builtins.toJSON attrset);
   # Returns true if allowedDomains is non-empty (works for both list and attrset).
   hasAllowedDomains = allowedDomains:
     if builtins.isList allowedDomains then allowedDomains != [ ]
@@ -185,9 +179,10 @@ let
       # wider internet.
       routeRestrictScript = pkgs.writeScript "sandbox-route-restrict" ''
         #!${pkgs.bashNonInteractive}/bin/bash
+        set -euo pipefail
         IP="${pkgs.iproute2}/bin/ip"
-        $IP route del default 2>/dev/null
-        $IP route add "$SANDBOX_HOST_IP"/32 via 10.0.2.2 2>/dev/null
+        $IP route del default || { echo "FATAL: could not remove default route" >&2; exit 1; }
+        $IP route add "$SANDBOX_HOST_IP"/32 via 10.0.2.2 || { echo "FATAL: could not add host route" >&2; exit 1; }
         exec "$@"
       '';
       conditionalNetworkingParams = if restrictNetwork then
@@ -201,9 +196,7 @@ let
             --ro-bind "$_COMBINED_CA_BUNDLE" /tmp/sandbox-ca-bundle.pem --ro-bind "$_CA_CERT_FILE" /tmp/sandbox-ca-cert.pem --setenv SSL_CERT_FILE /tmp/sandbox-ca-bundle.pem --setenv NIX_SSL_CERT_FILE /tmp/sandbox-ca-bundle.pem --setenv NODE_EXTRA_CA_CERTS /tmp/sandbox-ca-cert.pem --setenv REQUESTS_CA_BUNDLE /tmp/sandbox-ca-bundle.pem'';
           proxyStartupBashStr = ''
             # Detect host IP so the pasta namespace can reach the proxy
-            _HOST_IP_LINE=$(${pkgs.iproute2}/bin/ip -4 route get 1.1.1.1 2>/dev/null)
-            _HOST_IP=''${_HOST_IP_LINE##*src }
-            _HOST_IP=''${_HOST_IP%% *}
+            _HOST_IP=$(${pkgs.iproute2}/bin/ip -4 route get 1.1.1.1 2>/dev/null | ${pkgs.gnugrep}/bin/grep -oP 'src \K\S+')
             if [ -z "$_HOST_IP" ]; then
               echo "ERROR: could not determine host IP for pasta network namespace" >&2
               exit 1

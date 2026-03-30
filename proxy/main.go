@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"math/big"
@@ -42,33 +43,37 @@ func loadConfig(path string) (Config, error) {
 		return nil, err
 	}
 	defer f.Close()
-	cfg := make(Config)
-	sc := bufio.NewScanner(f)
-	for sc.Scan() {
-		line := strings.TrimSpace(sc.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		parts := strings.SplitN(line, "\t", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		domain := strings.ToLower(strings.TrimSpace(parts[0]))
-		methods := strings.TrimSpace(parts[1])
-		if methods == "*" {
-			cfg[domain] = DomainPolicy{AllowAll: true}
-		} else {
-			m := make(map[string]bool)
-			for _, method := range strings.Split(methods, ",") {
-				method = strings.TrimSpace(strings.ToUpper(method))
-				if method != "" {
-					m[method] = true
-				}
-			}
-			cfg[domain] = DomainPolicy{Methods: m}
-		}
+
+	// JSON format: { "domain": "*" | ["GET","HEAD"], ... }
+	var raw map[string]json.RawMessage
+	if err := json.NewDecoder(f).Decode(&raw); err != nil {
+		return nil, fmt.Errorf("parse config: %w", err)
 	}
-	return cfg, sc.Err()
+
+	cfg := make(Config)
+	for domain, val := range raw {
+		domain = strings.ToLower(domain)
+		// Try string first ("*"), then array of methods
+		var star string
+		if err := json.Unmarshal(val, &star); err == nil {
+			if star == "*" {
+				cfg[domain] = DomainPolicy{AllowAll: true}
+			} else {
+				return nil, fmt.Errorf("invalid policy for %q: string must be \"*\", got %q", domain, star)
+			}
+			continue
+		}
+		var methods []string
+		if err := json.Unmarshal(val, &methods); err != nil {
+			return nil, fmt.Errorf("invalid policy for %q: expected \"*\" or [\"METHOD\", ...]: %w", domain, err)
+		}
+		m := make(map[string]bool)
+		for _, method := range methods {
+			m[strings.ToUpper(method)] = true
+		}
+		cfg[domain] = DomainPolicy{Methods: m}
+	}
+	return cfg, nil
 }
 
 // lookupPolicy finds the policy for a host, falling back to the "*" default.
@@ -338,23 +343,29 @@ func handleMITM(clientConn net.Conn, host, hostPort string, cfg Config) {
 	}
 	defer clientTLS.Close()
 
-	// Connect to the real upstream server
-	upstreamTLS, err := tls.Dial("tcp", hostPort, &tls.Config{
-		ServerName: host,
-	})
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s upstream dial error for %s: %v\n", time.Now().Format(time.RFC3339), hostPort, err)
-		resp := &http.Response{
-			StatusCode: http.StatusBadGateway,
-			ProtoMajor: 1,
-			ProtoMinor: 1,
-			Header:     make(http.Header),
+	// Upstream connection is established lazily on the first allowed request,
+	// so blocked requests never trigger a TLS handshake to the remote server.
+	var upstreamTLS *tls.Conn
+	var upstreamBuf *bufio.Reader
+	dialUpstream := func() error {
+		if upstreamTLS != nil {
+			return nil
 		}
-		resp.Write(clientTLS)
-		return
+		conn, err := tls.Dial("tcp", hostPort, &tls.Config{
+			ServerName: host,
+		})
+		if err != nil {
+			return err
+		}
+		upstreamTLS = conn
+		upstreamBuf = bufio.NewReader(upstreamTLS)
+		return nil
 	}
-	defer upstreamTLS.Close()
-	upstreamBuf := bufio.NewReader(upstreamTLS)
+	defer func() {
+		if upstreamTLS != nil {
+			upstreamTLS.Close()
+		}
+	}()
 
 	// Read and forward HTTP requests over the decrypted TLS stream
 	clientBuf := bufio.NewReader(clientTLS)
@@ -380,6 +391,19 @@ func handleMITM(clientConn net.Conn, host, hostPort string, cfg Config) {
 			return
 		}
 
+		// Dial upstream on first allowed request
+		if err := dialUpstream(); err != nil {
+			fmt.Fprintf(os.Stderr, "%s upstream dial error for %s: %v\n", time.Now().Format(time.RFC3339), hostPort, err)
+			resp := &http.Response{
+				StatusCode: http.StatusBadGateway,
+				ProtoMajor: 1,
+				ProtoMinor: 1,
+				Header:     make(http.Header),
+			}
+			resp.Write(clientTLS)
+			return
+		}
+
 		// Forward request directly to upstream (no http.Transport — we
 		// manage the TLS conn ourselves to support keep-alive properly).
 		req.URL.Scheme = ""
@@ -395,7 +419,10 @@ func handleMITM(clientConn net.Conn, host, hostPort string, cfg Config) {
 			fmt.Fprintf(os.Stderr, "%s upstream read error for %s: %v\n", time.Now().Format(time.RFC3339), host, err)
 			return
 		}
-		resp.Write(clientTLS)
+		if err := resp.Write(clientTLS); err != nil {
+			resp.Body.Close()
+			return
+		}
 		resp.Body.Close()
 
 		// If either side signals close, stop
