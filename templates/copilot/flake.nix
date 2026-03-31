@@ -49,10 +49,6 @@
               "github.com" = [ "GET" "HEAD" ];
             };
           };
-        in {
-          default = pkgs.mkShell {
-            packages = [ copilot-sandboxed ];
-          };
-        });
+        in { default = pkgs.mkShell { packages = [ copilot-sandboxed ]; }; });
     };
 }

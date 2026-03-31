@@ -56,9 +56,12 @@ copilot-sandboxed --yolo
 
 If you want to keep the original command name as the alias, change the `outName` value (e.g. to `"claude"` or `"copilot"`).
 
+> **Network Restrictions**: If you'd like to restrict network connections to particular domains, see [Network restrictions](#network-restrictions).
+
 ### In a shell.nix
 
 You can also use a `shell.nix` instead of a flake. See [`shells/`](shells/) for ready-to-use templates.
+
 
 Here is an example that provides a nix shell with a sandboxed Claude Code binary (see [`shells/claude.shell.nix`](shells/claude.shell.nix) for the full version):
 
@@ -108,6 +111,7 @@ Enter the dev shell with:
 ```bash
 nix-shell shell.nix
 ```
+
 
 ### Network restrictions
 
@@ -296,8 +300,6 @@ If you are unable to debug, or suspect the AI can't access a file or folder it s
 - **macOS only: symlinks inside `stateDirs` and `stateFiles` must point to already-allowed paths.** Seatbelt follows symlinks to their target — if the target isn't in the Nix store closure or another allowed path, access will be denied. Symlinks into the Nix store will work but are read-only.
 - **Linux only: only top-level symlinks inside `stateDirs` are resolved.** At startup, the sandbox scans each `stateDir` for symlinks in its immediate children and binds their targets into the sandbox. Symlinks inside subdirectories are not followed. If you have deeper symlinks, add the target path as an additional `stateDir`.
 - Tested on x86_64-linux and aarch64-darwin. Other architectures should work but are untested.
-
-- Network filtering is proxy-based. On Linux, direct internet access is additionally blocked at the network namespace level via `pasta`. On macOS, only localhost is reachable when `restrictNetwork = true`.
 
 ## Similar projects
 

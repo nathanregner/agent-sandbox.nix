@@ -51,10 +51,6 @@
               "api.github.com" = [ "GET" "HEAD" ];
             };
           };
-        in {
-          default = pkgs.mkShell {
-            packages = [ claude-sandboxed ];
-          };
-        });
+        in { default = pkgs.mkShell { packages = [ claude-sandboxed ]; }; });
     };
 }
