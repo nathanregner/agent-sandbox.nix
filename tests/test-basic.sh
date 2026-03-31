@@ -62,6 +62,12 @@ if [ "$OS" = "Darwin" ]; then
 	expect_ok "can exec /bin/sh subshell" "/bin/sh -c 'echo hello'"
 	REAL_HOME="/Users/$(whoami)"
 	expect_fail "cannot read real home" "ls $REAL_HOME/.ssh"
+
+	# --- Directory enumeration (readdir blocked, stat allowed) ---
+	expect_fail "cannot enumerate /Users" "ls /Users/"
+	expect_fail "cannot enumerate real home dir" "ls $REAL_HOME/"
+	expect_ok "stat on /Users succeeds (path traversal)" "test -d /Users"
+	expect_ok "stat on real home succeeds (path traversal)" "test -d $REAL_HOME"
 elif [ "$OS" = "Linux" ]; then
 	expect_ok "/etc is writable tmpfs (ephemeral)" "touch /etc/test && rm /etc/test"
 	expect_fail "cannot read host /etc/shadow" "cat /etc/shadow"

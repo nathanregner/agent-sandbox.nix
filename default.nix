@@ -342,12 +342,13 @@ let
          /private/var/db/timezone — so date/time formatting works.
 
        Filesystem traversal (stat on parent dirs):
-         Allows stat() on /, /var, /private, /private/var, /Users,
-         $HOME, and $REPO_ROOT_PARENT. These are
-         read-only and restricted to literal paths (not subpath).
-         Needed because path resolution walks each component — without
-         this, even accessing an allowed subpath can fail with EPERM
-         during the stat() of a parent directory.
+         "/" gets file-read* (process startup requires readdir on root).
+         All others — /var, /private, /private/var, /Users,
+         $REAL_HOME, $REPO_ROOT_PARENT — get file-read-metadata only
+         (literal paths, not subpath). This allows stat() for path
+         component traversal without exposing directory contents via
+         readdir(). Without at least metadata access, even reaching an
+         allowed subpath can fail with EPERM during traversal.
 
        Working directory & repo:
          $CWD (subpath)        — full read-write to the project
