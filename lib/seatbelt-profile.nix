@@ -6,8 +6,7 @@
 #   networkRulesStr      — (allow network*) or restricted-proxy rules
 #   allowReadWriteExecStr — per-stateDir allow rules  (subpath, file-read/write/exec)
 #   allowFilesStr        — per-stateFile allow rules  (literal, file-read/write)
-{ networkRulesStr, allowReadWriteExecStr, allowFilesStr }:
-''
+{ networkRulesStr, allowReadWriteExecStr, allowFilesStr }: ''
   (version 1)
   (deny default)
 
@@ -129,8 +128,8 @@
     (literal (param "HOME_LOCAL_STATE"))
     (literal (param "REPO_ROOT_PARENT")))
 
-  ;; Sandbox HOME — full read access (it's an ephemeral tmpdir)
-  (allow file-read* (subpath (param "HOME")))
+  ;; Sandbox HOME — full read + exec (copilot stores spawn helper binaries here) 
+  (allow file-read* process-exec (subpath (param "HOME")))
 
   ;; Working directory & repository
   (allow file-read* file-write* (subpath (param "CWD")))
