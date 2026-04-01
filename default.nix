@@ -205,7 +205,7 @@ let
             fi
           '' + mkProxyStartupBashStr allowlistFileStr "0.0.0.0";
           bashTrapCleanupStr = ''trap 'kill $_PROXY_PID 2>/dev/null; rm -f "$_CA_CERT_FILE" "$_COMBINED_CA_BUNDLE"' EXIT'';
-          sandboxExecBashStr = ''SANDBOX_HOST_IP="$_HOST_IP" ${pkgs.passt}/bin/pasta --config-net -a 10.0.2.1 -g 10.0.2.2 -n 255.255.255.0 -- ${routeRestrictScript} '';
+          sandboxExecBashStr = ''SANDBOX_HOST_IP="$_HOST_IP" ${pkgs.passt}/bin/pasta -4 --config-net -a 10.0.2.1 -g 10.0.2.2 -n 255.255.255.0 -- ${routeRestrictScript} '';
           etcResolvBind =
             "--ro-bind /dev/null /etc/resolv.conf"; # Block DNS resolution when restrictNetwork is true.
           sslCertEnvBubblewrapStr = ""; # CA cert env vars are set in caCertBubblewrapStr
