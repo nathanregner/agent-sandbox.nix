@@ -32,8 +32,9 @@
             stateDirs = [ "$HOME/.claude" ];
             stateFiles = [ "$HOME/.claude.json" "$HOME/.claude.json.lock" ];
             extraEnv = {
-              # Use literal strings for secrets to evaluate at runtime!
-              # builtins.getEnv will leak your token into the /nix/store.
+              # Pass secrets as shell variable references (e.g. "$TOKEN"), not
+              # via builtins.getEnv, so they expand at runtime and stay out of
+              # the /nix/store.
               CLAUDE_CODE_OAUTH_TOKEN = "$CLAUDE_CODE_OAUTH_TOKEN";
               GITHUB_TOKEN = "$GITHUB_TOKEN";
               GIT_AUTHOR_NAME = "claude";

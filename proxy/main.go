@@ -17,6 +17,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -35,6 +36,13 @@ const maxURLBytes = 8192
 // doesn't try to route through another proxy on the host.
 var directTransport = &http.Transport{
 	Proxy: nil,
+}
+
+// knownHTTPMethods is the set of standard HTTP methods (RFC 9110).
+var knownHTTPMethods = map[string]bool{
+	"GET": true, "HEAD": true, "POST": true, "PUT": true,
+	"DELETE": true, "CONNECT": true, "OPTIONS": true, "TRACE": true,
+	"PATCH": true,
 }
 
 func loadConfig(path string) (Config, error) {
@@ -69,7 +77,11 @@ func loadConfig(path string) (Config, error) {
 		}
 		m := make(map[string]bool)
 		for _, method := range methods {
-			m[strings.ToUpper(method)] = true
+			upper := strings.ToUpper(method)
+			if !knownHTTPMethods[upper] {
+				fmt.Fprintf(os.Stderr, "WARNING: unrecognized HTTP method %q for domain %q\n", method, domain)
+			}
+			m[upper] = true
 		}
 		cfg[domain] = DomainPolicy{Methods: m}
 	}
@@ -77,15 +89,25 @@ func loadConfig(path string) (Config, error) {
 }
 
 // lookupPolicy finds the policy for a host, falling back to the "*" default.
+// When multiple suffix entries match, the longest (most specific) wins.
 func lookupPolicy(host string, cfg Config) (DomainPolicy, bool) {
 	host = strings.ToLower(host)
 	if p, ok := cfg[host]; ok {
 		return p, true
 	}
+	// Collect all suffix matches and pick the longest (most specific).
+	var bestDomain string
+	var bestPolicy DomainPolicy
 	for d, p := range cfg {
 		if d != "*" && strings.HasSuffix(host, "."+d) {
-			return p, true
+			if len(d) > len(bestDomain) {
+				bestDomain = d
+				bestPolicy = p
+			}
 		}
+	}
+	if bestDomain != "" {
+		return bestPolicy, true
 	}
 	if p, ok := cfg["*"]; ok {
 		return p, true
@@ -119,20 +141,24 @@ func hostOnly(addr string) string {
 
 // --- CA and certificate minting ---
 
-var (
-	caCert    *x509.Certificate
-	caKey     *ecdsa.PrivateKey
-	certCache sync.Map // hostname -> *tls.Certificate
-)
+const maxCachedCerts = 1024
 
-func generateCA() error {
+// certAuthority holds the ephemeral CA used to mint per-host leaf certificates.
+type certAuthority struct {
+	cert      *x509.Certificate
+	key       *ecdsa.PrivateKey
+	cache     sync.Map // hostname -> *tls.Certificate
+	cacheSize atomic.Int64
+}
+
+func newCertAuthority() (*certAuthority, error) {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	serial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	tmpl := &x509.Certificate{
 		SerialNumber: serial,
@@ -149,28 +175,26 @@ func generateCA() error {
 	}
 	certDER, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	cert, err := x509.ParseCertificate(certDER)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	caCert = cert
-	caKey = key
-	return nil
+	return &certAuthority{cert: cert, key: key}, nil
 }
 
-func writeCA(path string) error {
+func (ca *certAuthority) writeCert(path string) error {
 	f, err := os.Create(path)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-	return pem.Encode(f, &pem.Block{Type: "CERTIFICATE", Bytes: caCert.Raw})
+	return pem.Encode(f, &pem.Block{Type: "CERTIFICATE", Bytes: ca.cert.Raw})
 }
 
-func mintCert(hostname string) (*tls.Certificate, error) {
-	if cached, ok := certCache.Load(hostname); ok {
+func (ca *certAuthority) mintCert(hostname string) (*tls.Certificate, error) {
+	if cached, ok := ca.cache.Load(hostname); ok {
 		return cached.(*tls.Certificate), nil
 	}
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -194,7 +218,7 @@ func mintCert(hostname string) (*tls.Certificate, error) {
 	if ip := net.ParseIP(hostname); ip != nil {
 		tmpl.IPAddresses = []net.IP{ip}
 	}
-	certDER, err := x509.CreateCertificate(rand.Reader, tmpl, caCert, &key.PublicKey, caKey)
+	certDER, err := x509.CreateCertificate(rand.Reader, tmpl, ca.cert, &key.PublicKey, ca.key)
 	if err != nil {
 		return nil, err
 	}
@@ -202,7 +226,12 @@ func mintCert(hostname string) (*tls.Certificate, error) {
 		Certificate: [][]byte{certDER},
 		PrivateKey:  key,
 	}
-	certCache.Store(hostname, tlsCert)
+	// Avoid unbounded cache growth: stop caching after maxCachedCerts entries.
+	if ca.cacheSize.Load() < maxCachedCerts {
+		if _, loaded := ca.cache.LoadOrStore(hostname, tlsCert); !loaded {
+			ca.cacheSize.Add(1)
+		}
+	}
 	return tlsCert, nil
 }
 
@@ -225,10 +254,13 @@ func requestURLLength(req *http.Request) int {
 
 // applyFilters checks method, URL length, and WebSocket restrictions.
 // Returns an HTTP status code and reason if blocked, or 0 if allowed.
+// Callers must check isDomainAllowed first; this only applies per-request filters.
 func applyFilters(req *http.Request, host string, cfg Config) (int, string) {
 	if !isMethodAllowed(host, req.Method, cfg) {
 		return http.StatusForbidden, "method not allowed"
 	}
+	// URL length is only enforced for GET/HEAD where the URL carries the
+	// full query; POST/PUT etc. use the request body for payload data.
 	if (req.Method == "GET" || req.Method == "HEAD") && requestURLLength(req) > maxURLBytes {
 		return http.StatusRequestURITooLong, "URL too long"
 	}
@@ -249,11 +281,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := generateCA(); err != nil {
+	ca, err := newCertAuthority()
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "generate CA:", err)
 		os.Exit(1)
 	}
-	if err := writeCA(os.Args[2]); err != nil {
+	if err := ca.writeCert(os.Args[2]); err != nil {
 		fmt.Fprintln(os.Stderr, "write CA cert:", err)
 		os.Exit(1)
 	}
@@ -275,11 +308,11 @@ func main() {
 		if err != nil {
 			continue
 		}
-		go handle(conn, cfg)
+		go handle(conn, cfg, ca)
 	}
 }
 
-func handle(conn net.Conn, cfg Config) {
+func handle(conn net.Conn, cfg Config, ca *certAuthority) {
 	defer conn.Close()
 	br := bufio.NewReader(conn)
 	req, err := http.ReadRequest(br)
@@ -297,9 +330,14 @@ func handle(conn net.Conn, cfg Config) {
 		}
 		// MITM: intercept the TLS connection to inspect HTTP requests
 		fmt.Fprintf(conn, "HTTP/1.1 200 Connection Established\r\n\r\n")
-		handleMITM(conn, host, req.Host, cfg)
+		handleMITM(conn, host, req.Host, cfg, ca)
 	} else {
-		// Plaintext HTTP — apply full filtering
+		// Plaintext HTTP — check domain first, then apply full filtering
+		if !isDomainAllowed(host, cfg) {
+			fmt.Fprintf(os.Stderr, "%s blocked domain: %s\n", time.Now().Format(time.RFC3339), req.Host)
+			fmt.Fprintf(conn, "HTTP/1.1 403 Forbidden\r\n\r\n")
+			return
+		}
 		if code, reason := applyFilters(req, host, cfg); code != 0 {
 			fmt.Fprintf(os.Stderr, "%s blocked %s %s (%s, host: %s)\n",
 				time.Now().Format(time.RFC3339), req.Method, req.URL, reason, req.Host)
@@ -324,9 +362,9 @@ func handle(conn net.Conn, cfg Config) {
 	}
 }
 
-func handleMITM(clientConn net.Conn, host, hostPort string, cfg Config) {
+func handleMITM(clientConn net.Conn, host, hostPort string, cfg Config, ca *certAuthority) {
 	// Mint a certificate for this host
-	leafCert, err := mintCert(host)
+	leafCert, err := ca.mintCert(host)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s mint cert error for %s: %v\n", time.Now().Format(time.RFC3339), host, err)
 		return
