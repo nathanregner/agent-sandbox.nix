@@ -128,10 +128,8 @@
     (literal (param "HOME_LOCAL_STATE"))
     (literal (param "REPO_ROOT_PARENT")))
 
-  ;; Sandbox HOME — full read + exec (copilot stores spawn helper binaries here)
-  (allow file-read* process-exec
-    (literal (param "HOME"))
-    (subpath (param "HOME")))
+  ;; Sandbox HOME — full read + exec (copilot stores spawn helper binaries here) 
+  (allow file-read* process-exec (subpath (param "HOME")))
 
   ;; Working directory & repository
   (allow file-read* file-write* (subpath (param "CWD")))
