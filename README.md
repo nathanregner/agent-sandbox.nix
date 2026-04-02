@@ -98,9 +98,9 @@ let
     };
     restrictNetwork = true;
     allowedDomains = {
-      "anthropic.com" = "*";
+      "anthropic.com" = "*";                          # all methods, including subdomains
       "claude.com" = "*";
-      "raw.githubusercontent.com" = [ "GET" "HEAD" ];
+      "raw.githubusercontent.com" = [ "GET" "HEAD" ]; # read-only
       "api.github.com" = [ "GET" "HEAD" ];
     };
   };
@@ -116,23 +116,7 @@ nix-shell shell.nix
 
 ### Network restrictions
 
-By default, network access is unrestricted. But you can optionally restrict connections to specific domains:
-
-```nix
-  claude-sandboxed = sandbox.mkSandbox {
-    pkg = pkgs.claude-code;
-    binName = "claude";
-    outName = "claude-sandboxed";
-    allowedPackages = [ ... ];
-    ...
-    restrictNetwork = true;
-    allowedDomains = {
-      "anthropic.com" = "*";                          # all methods, including subdomains
-      "api.github.com" = [ "GET" "HEAD" ];            # read-only
-      "raw.githubusercontent.com" = [ "GET" "HEAD" ]; # read-only
-    };
-  };
-```
+By default, network access is unrestricted. But you can optionally restrict connections to specific domains by setting `restrictNetwork = true` and providing `allowedDomains` (as shown in the example above).
 
 `allowedDomains` accepts two formats:
 

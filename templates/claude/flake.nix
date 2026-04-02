@@ -44,10 +44,8 @@
             };
             restrictNetwork = true;
             allowedDomains = {
-              # Anthropic
               "anthropic.com" = "*";
               "claude.com" = "*";
-              # GitHub
               "raw.githubusercontent.com" = [ "GET" "HEAD" ];
               "api.github.com" = [ "GET" "HEAD" ];
             };

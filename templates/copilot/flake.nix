@@ -43,11 +43,9 @@
             };
             restrictNetwork = true;
             allowedDomains = {
-              # GitHub Copilot
               "githubcopilot.com" = "*";
-              # GitHub
+              "github.com" = "*";
               "githubusercontent.com" = [ "GET" "HEAD" ];
-              "github.com" = [ "GET" "HEAD" ];
             };
           };
         in { default = pkgs.mkShell { packages = [ copilot-sandboxed ]; }; });
