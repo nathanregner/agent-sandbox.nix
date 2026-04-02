@@ -67,20 +67,24 @@ let
     allowedPackages = commonPackages;
     extraEnv = commonEnv // pkgs.lib.optionalAttrs isLinux linuxEnv;
     restrictNetwork = true;
-    allowedDomains = [
-      # Anthropic
-      "anthropic.com"
-      "claude.com"
-      # GitHub 
-      "githubusercontent.com"
-      "github.com"
-      # PyPI 
-      "pypi.org"
-      "pythonhosted.org"
-    ];
+    # Broader domain scoping than claude.shell.nix: uv needs access to all
+    # github.com / githubusercontent.com subdomains, plus PyPI for packages.
+    allowedDomains = {
+      "anthropic.com" = "*";
+      "claude.com" = "*";
+      "githubusercontent.com" = [ "GET" "HEAD" ];
+      "github.com" = [ "GET" "HEAD" ];
+      "pypi.org" = [ "GET" "HEAD" ];
+      "pythonhosted.org" = [ "GET" "HEAD" ];
+    };
 
   };
 
+  # uv and python3 are repeated here (also in allowedPackages above) so they are
+  # available both inside the sandbox and in the outer nix-shell for ad-hoc use.
+  # LD_LIBRARY_PATH / UV_NO_MANAGED_PYTHON are similarly duplicated: extraEnv
+  # injects them inside the sandbox, while the attrs below set them in the
+  # outer nix-shell where uv may also be invoked directly.
 in pkgs.mkShell { packages = [ pkgs.uv pkgs.python3 claude-sandboxed ]; }
 // pkgs.lib.optionalAttrs isLinux {
   UV_NO_MANAGED_PYTHON = "1";

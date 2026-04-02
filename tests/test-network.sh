@@ -9,7 +9,9 @@ source "$SCRIPT_DIR/lib.sh"
 echo "=== Network restriction tests ($OS) ==="
 echo
 
-# Build a sandbox with restrictNetwork=true and one allowed domain
+# --- Backward-compat list-format tests ---
+
+# Build a sandbox with restrictNetwork=true and one allowed domain (list format)
 SANDBOXED_NET=$(nix-build --no-out-link "$SCRIPT_DIR/network-allowed.nix")
 NET_SHELL="$SANDBOXED_NET/bin/sandboxed-bash-net"
 run() { "$NET_SHELL" --norc --noprofile -c "$@" >/dev/null 2>&1; }
@@ -30,12 +32,17 @@ run() { "$UNRES_SHELL" --norc --noprofile -c "$@" >/dev/null 2>&1; }
 expect_ok "unrestricted mode can reach any domain" \
 	'curl -s --max-time 10 -o /dev/null http://example.com'
 
-# Test 4: SSL certificate verification works (cacert in closure)
-# This will fail with "SSL certificate problem" if cacert is not accessible
-expect_ok "HTTPS with SSL verification works" \
-	'curl -s --max-time 10 -o /dev/null https://httpbin.org/get'
+# Test 4: HTTPS with SSL verification works (proves CA injection)
+run() { "$NET_SHELL" --norc --noprofile -c "$@" >/dev/null 2>&1; }
 
-# Test 5: empty allowlist blocks everything
+expect_ok "HTTPS with SSL verification works (MITM CA injection)" \
+	'curl -sf --max-time 10 -o /dev/null https://httpbin.org/get'
+
+# Test 5: list format allows all methods (POST should succeed, proving "*" conversion)
+expect_ok "list format allows POST (backward-compat wildcard)" \
+	'curl -sf --max-time 10 -X POST -o /dev/null https://httpbin.org/post'
+
+# Test 6: empty allowlist blocks everything
 SANDBOXED_BLOCK=$(nix-build --no-out-link "$SCRIPT_DIR/network-blocked.nix")
 BLOCK_SHELL="$SANDBOXED_BLOCK/bin/sandboxed-bash-block"
 run() { "$BLOCK_SHELL" --norc --noprofile -c "$@" >/dev/null 2>&1; }
@@ -43,11 +50,64 @@ run() { "$BLOCK_SHELL" --norc --noprofile -c "$@" >/dev/null 2>&1; }
 expect_fail "empty allowlist blocks all domains" \
 	'curl -sf --max-time 10 -o /dev/null http://example.com'
 
-# Test 6 (Linux only): DNS resolution is blocked when restrictNetwork=true
+# Test 7 (Linux only): DNS resolution is blocked when restrictNetwork=true
 if [ "$OS" = "Linux" ]; then
+	run() { "$NET_SHELL" --norc --noprofile -c "$@" >/dev/null 2>&1; }
+	
 	expect_fail "DNS resolution blocked when restrictNetwork=true" \
 		'getent hosts example.com'
 fi
+
+# --- MITM / method filtering tests (attrset format) ---
+
+SANDBOXED_METHODS=$(nix-build --no-out-link "$SCRIPT_DIR/network-method-filtered.nix")
+METHOD_SHELL="$SANDBOXED_METHODS/bin/sandboxed-bash-methods"
+run() { "$METHOD_SHELL" --norc --noprofile -c "$@" >/dev/null 2>&1; }
+
+# Test 8: Allowed method succeeds (GET to httpbin.org)
+expect_ok "allowed method (GET httpbin.org) succeeds" \
+	'curl -sf --max-time 10 -o /dev/null https://httpbin.org/get'
+
+# Test 9: Blocked method returns 403 (POST to httpbin.org)
+expect_fail "blocked method (POST httpbin.org) denied" \
+	'curl -sf --max-time 10 -X POST -o /dev/null https://httpbin.org/post'
+
+# Test 10: Wildcard method domain allows POST (pie.dev)
+expect_ok "wildcard method domain allows POST" \
+	'curl -sf --max-time 10 -X POST -d "test=1" -o /dev/null https://pie.dev/post'
+
+# Test 11: URL > 8KB returns 414
+LONG_PATH=$(printf 'x%.0s' $(seq 1 8200))
+expect_fail "URL > 8KB returns 414" \
+	"curl -sf --max-time 10 -o /dev/null \"https://httpbin.org/get?q=$LONG_PATH\""
+
+# Test 12: WebSocket upgrade blocked
+expect_fail "WebSocket upgrade blocked" \
+	'curl -sf --max-time 10 -o /dev/null -H "Upgrade: websocket" -H "Connection: Upgrade" https://httpbin.org/get'
+
+# Test 13: subdomain of allowed domain works (suffix matching)
+expect_ok "subdomain of allowed domain works (www.httpbin.org)" \
+	'curl -sf --max-time 10 -o /dev/null https://www.httpbin.org/get'
+
+# Test 14: non-subdomain with shared suffix is blocked (no false suffix match)
+expect_fail "shared-suffix non-subdomain blocked (nothttpbin.org)" \
+	'curl -sf --max-time 10 -o /dev/null https://nothttpbin.org'
+
+# --- Direct-to-IP bypass tests (prove kernel-level enforcement) ---
+
+run() { "$NET_SHELL" --norc --noprofile -c "$@" >/dev/null 2>&1; }
+
+# Test 15: direct IP bypassing proxy is blocked
+expect_fail "direct IP bypass blocked (curl --noproxy)" \
+	'curl -sf --noproxy "*" --max-time 5 http://1.1.1.1'
+
+# Test 16: raw TCP connection bypassing proxy is blocked
+expect_fail "raw TCP bypass blocked (bash /dev/tcp)" \
+	'exec 3<>/dev/tcp/1.1.1.1/80'
+
+# Test 17: --connect-to direct IP for allowed domain blocked
+expect_fail "direct IP for allowed domain blocked (--connect-to)" \
+	'curl -sf --max-time 5 --connect-to ::1.1.1.1: http://httpbin.org/get'
 
 print_results
 exit_status

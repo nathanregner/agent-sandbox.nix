@@ -6,10 +6,7 @@
 #   nix-shell shells/claude.shell.nix
 let
   pkgs = import <nixpkgs> { config.allowUnfree = true; };
-  sandbox = import (fetchTarball
-    "https://github.com/archie-judd/agent-sandbox.nix/archive/main.tar.gz") {
-      pkgs = pkgs;
-    };
+  sandbox = import ../. { pkgs = pkgs; };
   claude-sandboxed = sandbox.mkSandbox {
     pkg = pkgs.claude-code;
     binName = "claude";
@@ -28,8 +25,9 @@ let
     stateDirs = [ "$HOME/.claude" ];
     stateFiles = [ "$HOME/.claude.json" "$HOME/.claude.json.lock" ];
     extraEnv = {
-      # Use literal strings for secrets to evaluate at runtime!
-      # builtins.getEnv will leak your token into the /nix/store.
+      # Pass secrets as shell variable references (e.g. "$TOKEN"), not
+      # via builtins.getEnv, so they expand at runtime and stay out of
+      # the /nix/store.
       CLAUDE_CODE_OAUTH_TOKEN = "$CLAUDE_CODE_OAUTH_TOKEN";
       GITHUB_TOKEN = "$GITHUB_TOKEN";
       GIT_AUTHOR_NAME = "claude";
@@ -38,13 +36,11 @@ let
       GIT_COMMITTER_EMAIL = "claude@localhost";
     };
     restrictNetwork = true;
-    allowedDomains = [
-      # Anthropic
-      "anthropic.com"
-      "claude.com"
-      # GitHub
-      "raw.githubusercontent.com"
-      "api.github.com"
-    ];
+    allowedDomains = {
+      "anthropic.com" = "*";
+      "claude.com" = "*";
+      "raw.githubusercontent.com" = [ "GET" "HEAD" ];
+      "api.github.com" = [ "GET" "HEAD" ];
+    };
   };
 in pkgs.mkShell { packages = [ claude-sandboxed ]; }

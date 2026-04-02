@@ -32,15 +32,24 @@
             stateDirs = [ "$HOME/.config/github-copilot" "$HOME/.copilot" ];
             stateFiles = [ ];
             extraEnv = {
-              # Use literal strings for secrets to evaluate at runtime!
-              # builtins.getEnv will leak your token into the /nix/store.
+              # Pass secrets as shell variable references (e.g. "$TOKEN"), not
+              # via builtins.getEnv, so they expand at runtime and stay out of
+              # the /nix/store.
               GITHUB_TOKEN = "$GITHUB_TOKEN";
+              GIT_AUTHOR_NAME = "copilot";
+              GIT_AUTHOR_EMAIL = "copilot@localhost";
+              GIT_COMMITTER_NAME = "copilot";
+              GIT_COMMITTER_EMAIL = "copilot@localhost";
+            };
+            restrictNetwork = true;
+            allowedDomains = {
+              # GitHub Copilot
+              "githubcopilot.com" = "*";
+              # GitHub
+              "githubusercontent.com" = [ "GET" "HEAD" ];
+              "github.com" = [ "GET" "HEAD" ];
             };
           };
-        in {
-          default = pkgs.mkShell {
-            packages = [ copilot-sandboxed ];
-          };
-        });
+        in { default = pkgs.mkShell { packages = [ copilot-sandboxed ]; }; });
     };
 }

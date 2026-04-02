@@ -35,13 +35,11 @@ let
       GIT_COMMITTER_EMAIL = "copilot@localhost";
     };
     restrictNetwork = true;
-    allowedDomains = [
-      # GitHub Copilot
-      "githubcopilot.com"
-      # GitHub
-      "githubusercontent.com"
-      "github.com"
-    ];
+    allowedDomains = {
+      "githubcopilot.com" = "*";
+      "github.com" = "*";
+      "githubusercontent.com" = [ "GET" "HEAD" ];
+    };
 
   };
 
