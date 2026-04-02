@@ -114,6 +114,21 @@ nix-shell shell.nix
 ```
 
 
+## Arguments
+
+| Argument | Required | Description |
+|---|---|---|
+| `pkg` | yes | Package containing the binary to wrap |
+| `binName` | yes | Name of the binary inside `pkg/bin/` |
+| `outName` | yes | Name for the resulting wrapped binary and the command to invoke it with |
+| `allowedPackages` | yes | Packages whose `bin/` dirs form the sandbox PATH. `bash` and `cacert` are provided by default — the sandbox needs a shell to run, and `cacert` is required for HTTPS to work. |
+| `stateDirs` | no | Directories the agent can read/write (e.g. `~/.config/claude`) |
+| `stateFiles` | no | Individual files the agent can read/write |
+| `extraEnv` | no | Additional environment variables as an attrset |
+| `restrictNetwork` | no | When `true`, network is limited to `allowedDomains` (default `false`) |
+| `allowedDomains` | no | Domains the sandbox can reach when `restrictNetwork = true`. Attrset mapping domains to `"*"` or a list of HTTP methods, or a list of domain strings (all methods allowed). |
+
+
 ### Network restrictions
 
 By default, network access is unrestricted. But you can optionally restrict connections to specific domains by setting `restrictNetwork = true` and providing `allowedDomains` (as shown in the example above).
@@ -128,20 +143,6 @@ Domains are suffix-matched, so `"anthropic.com"` will capture all `*.anthropic.c
 When `restrictNetwork = true`, all HTTP/HTTPS traffic is routed through a filtering proxy that inspects requests by domain and HTTP method. The sandbox cannot bypass the proxy and DNS resolution is blocked. WebSocket connections are not permitted.
 
 Blocked requests are logged to `/tmp/sandbox-proxy.log`. See [Git](#git) for limitations on SSH-based remotes.
-
-## Arguments
-
-| Argument | Required | Description |
-|---|---|---|
-| `pkg` | yes | Package containing the binary to wrap |
-| `binName` | yes | Name of the binary inside `pkg/bin/` |
-| `outName` | yes | Name for the resulting wrapped binary and the command to invoke it with |
-| `allowedPackages` | yes | Packages whose `bin/` dirs form the sandbox PATH. `bash` and `cacert` are provided by default — the sandbox needs a shell to run, and `cacert` is required for HTTPS to work. |
-| `stateDirs` | no | Directories the agent can read/write (e.g. `~/.config/claude`) |
-| `stateFiles` | no | Individual files the agent can read/write |
-| `extraEnv` | no | Additional environment variables as an attrset |
-| `restrictNetwork` | no | When `true`, network is limited to `allowedDomains` (default `false`) |
-| `allowedDomains` | no | Domains the sandbox can reach when `restrictNetwork = true`. Attrset mapping domains to `"*"` or a list of HTTP methods, or a list of domain strings (all methods allowed). |
 
 
 ## Authentication
@@ -299,4 +300,3 @@ There are several other tools for sandboxing AI agents. Here are a few:
 [**agent-box**](https://github.com/fletchgqc/agentbox) — A rust CLI that uses disposable containers with Jujutsu or Git worktrees. MacOS and Linux.
 
 [**jjinn**](https://github.com/anglesideangle/jjinn) — A nix script that sandboxes agents in ephemeral Jujutsu workspaces using bubblewrap. Linux only.
-
