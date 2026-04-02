@@ -10,6 +10,6 @@ in sandbox.mkSandbox {
   restrictNetwork = true;
   allowedDomains = {
     "httpbin.org" = [ "GET" "HEAD" ];
-    "postman-echo.com" = "*";
+    "pie.dev" = "*";
   };
 }

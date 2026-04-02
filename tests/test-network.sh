@@ -72,9 +72,9 @@ expect_ok "allowed method (GET httpbin.org) succeeds" \
 expect_fail "blocked method (POST httpbin.org) denied" \
 	'curl -sf --max-time 10 -X POST -o /dev/null https://httpbin.org/post'
 
-# Test 10: Wildcard method domain allows POST (postman-echo.com)
+# Test 10: Wildcard method domain allows POST (pie.dev)
 expect_ok "wildcard method domain allows POST" \
-	'curl -sf --max-time 10 -X POST -o /dev/null https://postman-echo.com/post'
+	'curl -sf --max-time 10 -X POST -d "test=1" -o /dev/null https://pie.dev/post'
 
 # Test 11: URL > 8KB returns 414
 LONG_PATH=$(printf 'x%.0s' $(seq 1 8200))
@@ -105,11 +105,9 @@ expect_fail "direct IP bypass blocked (curl --noproxy)" \
 expect_fail "raw TCP bypass blocked (bash /dev/tcp)" \
 	'exec 3<>/dev/tcp/1.1.1.1/80'
 
-# Test 17 (Linux only): --connect-to direct IP for allowed domain blocked
-if [ "$OS" = "Linux" ]; then
-	expect_fail "direct IP for allowed domain blocked (--connect-to)" \
-		'curl -sf --max-time 5 --connect-to ::1.1.1.1: http://httpbin.org/get'
-fi
+# Test 17: --connect-to direct IP for allowed domain blocked
+expect_fail "direct IP for allowed domain blocked (--connect-to)" \
+	'curl -sf --max-time 5 --connect-to ::1.1.1.1: http://httpbin.org/get'
 
 print_results
 exit_status
