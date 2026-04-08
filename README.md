@@ -151,6 +151,20 @@ Because `$HOME` is masked, agents cannot reach your system keychain, browser ses
 
 If your agent stores credentials in files (e.g. Claude Code uses `~/.claude/`), you can run the login flow unsandboxed first, then expose the `~/.claude` directory via `stateDirs`. The sandboxed agent will pick up the cached credentials. Otherwise, use an environment variable token.
 
+### macOS Keychain credentials
+
+On macOS, Claude Code stores credentials in the system Keychain rather than in files. Since the sandbox cannot access the Keychain, you need to export the credentials to a file after logging in:
+
+```bash
+# Log in outside the sandbox first
+claude /login
+
+# Export credentials from Keychain to a file the sandbox can read
+security find-generic-password -a "$USER" -s "Claude Code-credentials" -w > ~/.claude/.credentials.json
+```
+
+The sandboxed agent will read credentials from `~/.claude/.credentials.json` when Keychain access is unavailable.
+
 ### Environment variable tokens
 
 Export your token in the host terminal before launching the sandbox — tokens are evaluated at runtime to prevent them from leaking into the Nix store:
