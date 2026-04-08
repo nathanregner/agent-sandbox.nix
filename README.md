@@ -56,63 +56,6 @@ copilot-sandboxed --yolo
 
 If you want to keep the original command name as the alias, change the `outName` value (e.g. to `"claude"` or `"copilot"`).
 
-### In a shell.nix
-
-You can also use a `shell.nix` instead of a flake. See [`shells/`](shells/) for ready-to-use templates.
-
-<details>
-<summary><strong>Full shell.nix example for Claude Code</strong></summary>
-
-```nix
-let
-  pkgs = import <nixpkgs> { config.allowUnfree = true; };
-  sandbox = import (fetchTarball
-    "https://github.com/archie-judd/agent-sandbox.nix/archive/main.tar.gz") {
-      pkgs = pkgs;
-    };
-  claude-sandboxed = sandbox.mkSandbox {
-    pkg = pkgs.claude-code;
-    binName = "claude";
-    outName = "claude-sandboxed";
-    allowedPackages = [
-      pkgs.coreutils
-      pkgs.which
-      pkgs.git
-      pkgs.ripgrep
-      pkgs.fd
-      pkgs.gnused
-      pkgs.gnugrep
-      pkgs.findutils
-      pkgs.jq
-    ]; # bash is allowed by default - it is required by the sandbox
-    stateDirs = [ "$HOME/.claude" ];
-    stateFiles = [ "$HOME/.claude.json" "$HOME/.claude.json.lock" ];
-    extraEnv = {
-      # Pass secrets as shell variable references (e.g. "$TOKEN"), not
-      # via builtins.getEnv, so they expand at runtime and stay out of
-      # the /nix/store.
-      CLAUDE_CODE_OAUTH_TOKEN = "$CLAUDE_CODE_OAUTH_TOKEN";
-      GITHUB_TOKEN = "$GITHUB_TOKEN";
-    };
-    restrictNetwork = true;
-    allowedDomains = {
-      "anthropic.com" = "*";                          # all methods, including subdomains
-      "claude.com" = "*";
-      "raw.githubusercontent.com" = [ "GET" "HEAD" ]; # read-only
-      "api.github.com" = [ "GET" "HEAD" ];
-    };
-  };
-in pkgs.mkShell { packages = [ claude-sandboxed ]; }
-```
-
-Enter the dev shell with:
-
-```bash
-nix-shell shell.nix
-```
-
-</details>
-
 ### Arguments
 
 `mkSandbox` accepts the following arguments:
@@ -146,6 +89,8 @@ mkSandbox {
   allowedDomains = {
     "anthropic.com" = "*";
     "claude.com" = "*";
+    "github.com" = ["GET" "HEAD"];
+    "githubusercontent.com" = ["GET" "HEAD"];
   };
 }
 ```
