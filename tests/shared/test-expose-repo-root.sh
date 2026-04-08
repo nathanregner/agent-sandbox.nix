@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# Tests for exposeRepoRoot parameter
+# Tests for exposeRepoRoot parameter (shared across platforms)
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-OS=$(uname)
 
-source "$SCRIPT_DIR/lib.sh"
+source "$SCRIPT_DIR/../lib.sh"
 
-SANDBOXED=$(nix-build --no-out-link "$SCRIPT_DIR/expose-repo-root.nix")
+SANDBOXED=$(nix-build --no-out-link "$SCRIPT_DIR/../fixtures/expose-repo-root.nix")
 SHELL="$SANDBOXED/bin/sandboxed-bash"
 
 # Set up a git repo with a subdirectory.
@@ -14,7 +13,7 @@ SHELL="$SANDBOXED/bin/sandboxed-bash"
 # full read-write access to /tmp. Using a gitignored directory inside this
 # repo ensures the sandbox rules for REPO_ROOT (read-only) and CWD
 # (read-write) are actually exercised.
-REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)/.tmp-test"
+REPO_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)/.tmp-test"
 mkdir -p "$REPO_DIR"
 REPO=$(mktemp -d "$REPO_DIR/bind-test.XXXXXX")
 trap 'rm -rf "$REPO"' EXIT
@@ -37,7 +36,7 @@ cd "$REPO/subdir"
 run() { "$ACTIVE_SHELL" --norc --noprofile -c "$@" >/dev/null 2>&1; }
 run_output() { "$ACTIVE_SHELL" --norc --noprofile -c "$@" 2>/dev/null; }
 
-echo "=== exposeRepoRoot tests ($OS) ==="
+echo "=== exposeRepoRoot tests (shared) ==="
 echo
 
 ACTIVE_SHELL="$SHELL"

@@ -1,7 +1,7 @@
 # Test fixture: network restricted with allowed domain
 let
   pkgs = import <nixpkgs> { };
-  sandbox = import ../default.nix { pkgs = pkgs; };
+  sandbox = import ../../default.nix { pkgs = pkgs; };
 in sandbox.mkSandbox {
   pkg = pkgs.bash;
   binName = "bash";

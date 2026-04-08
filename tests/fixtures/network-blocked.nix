@@ -1,7 +1,7 @@
 # Test fixture: empty allowlist blocks all network
 let
   pkgs = import <nixpkgs> { };
-  sandbox = import ../default.nix { pkgs = pkgs; };
+  sandbox = import ../../default.nix { pkgs = pkgs; };
 in sandbox.mkSandbox {
   pkg = pkgs.bash;
   binName = "bash";

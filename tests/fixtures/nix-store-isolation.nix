@@ -5,7 +5,7 @@
 # expression) but is NOT in allowedPackages, so the sandbox should deny access.
 let
   pkgs = import <nixpkgs> { };
-  sandbox = import ../default.nix { pkgs = pkgs; };
+  sandbox = import ../../default.nix { pkgs = pkgs; };
   disallowedPkg = pkgs.hello;
 in sandbox.mkSandbox {
   pkg = pkgs.bash;

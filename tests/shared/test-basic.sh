@@ -1,24 +1,23 @@
 #!/usr/bin/env bash
-# Basic sandbox isolation and access tests
+# Basic sandbox isolation and access tests (shared across platforms)
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-OS=$(uname)
 
-source "$SCRIPT_DIR/lib.sh"
+source "$SCRIPT_DIR/../lib.sh"
 
-SANDBOXED=$(nix-build --no-out-link "$SCRIPT_DIR/basic-sandbox.nix")
+SANDBOXED=$(nix-build --no-out-link "$SCRIPT_DIR/../fixtures/basic-sandbox.nix")
 SHELL="$SANDBOXED/bin/sandboxed-bash"
 
 run() { "$SHELL" --norc --noprofile -c "$@" >/dev/null 2>&1; }
 run_output() { "$SHELL" --norc --noprofile -c "$@" 2>/dev/null; }
 
-TESTDIR_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)/.tmp-test"
+TESTDIR_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)/.tmp-test"
 mkdir -p "$TESTDIR_ROOT"
 TESTDIR=$(mktemp -d "$TESTDIR_ROOT/basic.XXXXXX")
 trap 'rm -rf "$TESTDIR"' EXIT
 cd "$TESTDIR"
 
-echo "=== Basic sandbox tests ($OS) ==="
+echo "=== Basic sandbox tests (shared) ==="
 echo
 
 # --- Isolation ---
@@ -55,23 +54,6 @@ fi
 expect_ok "home is empty tmpfs" "ls \$HOME"
 expect_ok "home tmpfs is writable (ephemeral)" "touch \$HOME/.test-write && rm \$HOME/.test-write"
 expect_fail "host dotfiles are not visible" "ls \$HOME/.bashrc"
-
-# --- Platform-specific ---
-if [ "$OS" = "Darwin" ]; then
-	expect_fail "cannot write to /etc" "touch /etc/test"
-	expect_ok "can exec /bin/sh subshell" "/bin/sh -c 'echo hello'"
-	REAL_HOME="/Users/$(whoami)"
-	expect_fail "cannot read real home" "ls $REAL_HOME/.ssh"
-
-	# --- Directory enumeration (readdir blocked, stat allowed) ---
-	expect_fail "cannot enumerate /Users" "ls /Users/"
-	expect_fail "cannot enumerate real home dir" "ls $REAL_HOME/"
-	expect_ok "stat on /Users succeeds (path traversal)" "test -d /Users"
-	expect_ok "stat on real home succeeds (path traversal)" "test -d $REAL_HOME"
-elif [ "$OS" = "Linux" ]; then
-	expect_ok "/etc is writable tmpfs (ephemeral)" "touch /etc/test && rm /etc/test"
-	expect_fail "cannot read host /etc/shadow" "cat /etc/shadow"
-fi
 
 print_results
 exit_status

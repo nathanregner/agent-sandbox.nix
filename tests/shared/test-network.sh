@@ -1,18 +1,17 @@
 #!/usr/bin/env bash
-# Network restriction tests
+# Network restriction tests (shared across platforms)
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-OS=$(uname)
 
-source "$SCRIPT_DIR/lib.sh"
+source "$SCRIPT_DIR/../lib.sh"
 
-echo "=== Network restriction tests ($OS) ==="
+echo "=== Network restriction tests (shared) ==="
 echo
 
 # --- Backward-compat list-format tests ---
 
 # Build a sandbox with restrictNetwork=true and one allowed domain (list format)
-SANDBOXED_NET=$(nix-build --no-out-link "$SCRIPT_DIR/network-allowed.nix")
+SANDBOXED_NET=$(nix-build --no-out-link "$SCRIPT_DIR/../fixtures/network-allowed.nix")
 NET_SHELL="$SANDBOXED_NET/bin/sandboxed-bash-net"
 run() { "$NET_SHELL" --norc --noprofile -c "$@" >/dev/null 2>&1; }
 
@@ -25,7 +24,7 @@ expect_fail "blocked domain (example.com) denied" \
 	'curl -sf --max-time 10 -o /dev/null http://example.com'
 
 # Test 3: unrestricted mode still works
-SANDBOXED_UNRES=$(nix-build --no-out-link "$SCRIPT_DIR/network-unrestricted.nix")
+SANDBOXED_UNRES=$(nix-build --no-out-link "$SCRIPT_DIR/../fixtures/network-unrestricted.nix")
 UNRES_SHELL="$SANDBOXED_UNRES/bin/sandboxed-bash-unres"
 run() { "$UNRES_SHELL" --norc --noprofile -c "$@" >/dev/null 2>&1; }
 
@@ -43,24 +42,16 @@ expect_ok "list format allows POST (backward-compat wildcard)" \
 	'curl -sf --max-time 10 -X POST -o /dev/null https://httpbin.org/post'
 
 # Test 6: empty allowlist blocks everything
-SANDBOXED_BLOCK=$(nix-build --no-out-link "$SCRIPT_DIR/network-blocked.nix")
+SANDBOXED_BLOCK=$(nix-build --no-out-link "$SCRIPT_DIR/../fixtures/network-blocked.nix")
 BLOCK_SHELL="$SANDBOXED_BLOCK/bin/sandboxed-bash-block"
 run() { "$BLOCK_SHELL" --norc --noprofile -c "$@" >/dev/null 2>&1; }
 
 expect_fail "empty allowlist blocks all domains" \
 	'curl -sf --max-time 10 -o /dev/null http://example.com'
 
-# Test 7 (Linux only): DNS resolution is blocked when restrictNetwork=true
-if [ "$OS" = "Linux" ]; then
-	run() { "$NET_SHELL" --norc --noprofile -c "$@" >/dev/null 2>&1; }
-	
-	expect_fail "DNS resolution blocked when restrictNetwork=true" \
-		'getent hosts example.com'
-fi
-
 # --- MITM / method filtering tests (attrset format) ---
 
-SANDBOXED_METHODS=$(nix-build --no-out-link "$SCRIPT_DIR/network-method-filtered.nix")
+SANDBOXED_METHODS=$(nix-build --no-out-link "$SCRIPT_DIR/../fixtures/network-method-filtered.nix")
 METHOD_SHELL="$SANDBOXED_METHODS/bin/sandboxed-bash-methods"
 run() { "$METHOD_SHELL" --norc --noprofile -c "$@" >/dev/null 2>&1; }
 
