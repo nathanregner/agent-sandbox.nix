@@ -23,14 +23,9 @@ The quickest way to get started is with a flake template. If you prefer a `shell
 
 ### Templates
 
-Flake templates are provided for quick project setup:
+Flake templates for claude-code and github copilot CLI are provided for quick project setup, but you can alter either to work with any other CLI tool.
 
-| Template | Description |
-|---|---|
-| `claude` | Dev shell with a sandboxed Claude Code binary |
-| `copilot` | Dev shell with a sandboxed GitHub Copilot CLI binary |
-
-Initialize a template in your project directory:
+To initialize a template in your project directory:
 
 ```bash
 nix flake init -t github:archie-judd/agent-sandbox.nix#claude
