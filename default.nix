@@ -755,14 +755,19 @@ let
       destination = "/bin/${outName}";
       text = ''
         #!${pkgs.bashInteractive}/bin/bash
+        _SANDBOX_START=$(${pkgs.coreutils}/bin/date +%s%3N)
+        _log() { echo "  $1: $(($(${pkgs.coreutils}/bin/date +%s%3N) - _SANDBOX_START))ms" >&2; }
+
         CWD=$(pwd)
         ${conditionalNetworkingParams.warnIgnoredDomainsBashStr}
 
         # Ensure stateDirs/stateFiles exist while HOME still points at real home
         ${mkDirsStr}
         ${mkFilesStr}
+        _log "mkdirs"
 
         ${gitDetectionBashStr}
+        _log "git detection"
 
         # Capture real HOME paths before redirecting
         GIT_CONFIG_DIR="$HOME/.config/git"
@@ -772,6 +777,7 @@ let
         ${resolveStateFilesStr}
         ${resolveRoStateDirsStr}
         ${resolveRoStateFilesStr}
+        _log "resolve paths"
 
         # Create ephemeral sandbox directories so subprocesses can't access
         # the host's tmp or home. Uses /private/var/folders (per-user temp)
@@ -782,6 +788,7 @@ let
         SANDBOX_HOME="$SANDBOX_BASE/home"
         SANDBOX_TMPDIR="$SANDBOX_BASE/tmp"
         mkdir -p "$SANDBOX_HOME" "$SANDBOX_TMPDIR"
+        _log "sandbox dirs"
 
         # Symlink state dirs/files into sandbox HOME so $HOME-relative lookups
         # reach the real paths through the Seatbelt-allowed targets.
@@ -789,16 +796,19 @@ let
         ${symlinkStateFilesStr}
         ${symlinkRoStateDirsStr}
         ${symlinkRoStateFilesStr}
+        _log "symlinks"
 
         # Walk ancestor directories between REAL_HOME and REPO_ROOT (or CWD)
         # and patch the seatbelt profile at runtime with file-read-metadata rules.
         ${ancestorTraversalBashStr}
         ${ancestorProfilePatchBashStr}
+        _log "seatbelt profile"
 
         # Proxy temp files go in SANDBOX_BASE so they're accessible inside the sandbox
         _PROXY_TMPDIR="$SANDBOX_BASE"
         ${conditionalNetworkingParams.proxyStartupBashStr}
         ${conditionalNetworkingParams.bashTrapCleanupStr}
+        _log "sandbox setup complete"
 
 
         ${conditionalNetworkingParams.sandboxExecBashStr}/usr/bin/env -i \
