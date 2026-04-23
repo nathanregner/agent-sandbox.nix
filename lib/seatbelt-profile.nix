@@ -96,10 +96,10 @@
     (subpath "/Library/Keychains")
     (literal "/private/var/run/systemkeychaincheck.done"))
 
-  ;; Temp directories
+  ;; Temp directories — only sandbox-specific TMPDIR is allowed.
+  ;; System /tmp and /private/tmp are blocked to prevent escape via
+  ;; tools like tmux that use sockets there.
   (allow file-read* file-write*
-    (subpath "/tmp")
-    (subpath "/private/tmp")
     (subpath (param "TMPDIR"))
     (subpath "/private/var/folders"))
 

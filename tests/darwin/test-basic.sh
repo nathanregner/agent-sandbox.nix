@@ -32,5 +32,11 @@ expect_fail "cannot enumerate real home dir" "ls $REAL_HOME/"
 expect_ok "stat on /Users succeeds (path traversal)" "test -d /Users"
 expect_ok "stat on real home succeeds (path traversal)" "test -d $REAL_HOME"
 
+# --- /tmp isolation (prevents tmux attach escape) ---
+expect_fail "cannot access /tmp" "ls /tmp/"
+expect_fail "cannot access /private/tmp" "ls /private/tmp/"
+expect_ok "TMPDIR is writable" 'touch "$TMPDIR/test-file"'
+expect_ok "TMPDIR is not under /tmp" '[[ "$TMPDIR" != /tmp* ]] && [[ "$TMPDIR" != /private/tmp* ]]'
+
 print_results
 exit_status

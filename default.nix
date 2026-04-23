@@ -40,14 +40,16 @@ let
   # Shared by mkLinuxSandbox and mkDarwinSandbox. Starts the MITM proxy,
   # blocks until it reports its listening port via a FIFO, and creates
   # a combined CA bundle for the sandbox to trust the proxy's ephemeral CA.
+  # Expects _PROXY_TMPDIR to be set by the caller (defaults to /tmp).
   mkProxyStartupBashStr = allowlistFileStr: listenAddr: ''
     # Start the MITM proxy and read its port via FIFO
-    _CA_CERT_FILE=$(mktemp /tmp/sandbox-ca-cert.XXXXXX)
-    _PROXY_PORT_FIFO=$(mktemp -u /tmp/sandbox-proxy-port.XXXXXX)
+    _PROXY_TMPDIR="''${_PROXY_TMPDIR:-/tmp}"
+    _CA_CERT_FILE=$(mktemp "$_PROXY_TMPDIR/sandbox-ca-cert.XXXXXX")
+    _PROXY_PORT_FIFO=$(mktemp -u "$_PROXY_TMPDIR/sandbox-proxy-port.XXXXXX")
     mkfifo "$_PROXY_PORT_FIFO"
     # Open FIFO read-write so neither side blocks waiting for the other
     exec 3<> "$_PROXY_PORT_FIFO"
-    ${sandboxProxy}/bin/sandbox-proxy ${allowlistFileStr} "$_CA_CERT_FILE" ${listenAddr} > "$_PROXY_PORT_FIFO" 2>>/tmp/sandbox-proxy.log &
+    ${sandboxProxy}/bin/sandbox-proxy ${allowlistFileStr} "$_CA_CERT_FILE" ${listenAddr} > "$_PROXY_PORT_FIFO" 2>>"$_PROXY_TMPDIR/sandbox-proxy.log" &
     _PROXY_PID=$!
     # Block until the proxy writes its port (or 5s timeout via background kill)
     ( sleep 5 && kill -0 $$ 2>/dev/null && echo >&2 "ERROR: sandbox proxy timed out" && kill $$ ) &
@@ -58,12 +60,12 @@ let
     wait $_TIMEOUT_PID 2>/dev/null || true
     rm -f "$_PROXY_PORT_FIFO"
     if [ -z "$_PROXY_PORT" ]; then
-      echo "ERROR: sandbox proxy failed to start (check /tmp/sandbox-proxy.log)" >&2
+      echo "ERROR: sandbox proxy failed to start (check $_PROXY_TMPDIR/sandbox-proxy.log)" >&2
       kill $_PROXY_PID 2>/dev/null
       exit 1
     fi
     # Create a combined CA bundle: system certs + proxy's ephemeral CA
-    _COMBINED_CA_BUNDLE=$(mktemp /tmp/sandbox-ca-bundle.XXXXXX)
+    _COMBINED_CA_BUNDLE=$(mktemp "$_PROXY_TMPDIR/sandbox-ca-bundle.XXXXXX")
     cat ${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt "$_CA_CERT_FILE" > "$_COMBINED_CA_BUNDLE"
   '';
   /* mkLinuxSandbox — wraps a binary in a bubblewrap (bwrap) container.
@@ -648,7 +650,7 @@ let
           proxyStartupBashStr =
             mkProxyStartupBashStr allowlistFileStr "127.0.0.1";
           bashTrapCleanupStr = ''
-            trap 'kill $_PROXY_PID 2>/dev/null; rm -f "$_CA_CERT_FILE" "$_COMBINED_CA_BUNDLE"; rm -rf "$SANDBOX_HOME" "$SANDBOX_PROFILE"' EXIT'';
+            trap 'kill $_PROXY_PID 2>/dev/null; rm -f "$_CA_CERT_FILE" "$_COMBINED_CA_BUNDLE"; rm -rf "$SANDBOX_BASE" "$SANDBOX_PROFILE"' EXIT'';
           sandboxExecBashStr = "";
 
         }
@@ -667,7 +669,7 @@ let
           (allow system-socket)
         '';
         proxyStartupBashStr = "";
-        bashTrapCleanupStr = ''trap 'rm -rf "$SANDBOX_HOME" "$SANDBOX_PROFILE"' EXIT'';
+        bashTrapCleanupStr = ''trap 'rm -rf "$SANDBOX_BASE" "$SANDBOX_PROFILE"' EXIT'';
         sandboxExecBashStr = "exec ";
 
       };
@@ -771,10 +773,15 @@ let
         ${resolveRoStateDirsStr}
         ${resolveRoStateFilesStr}
 
-        # Create an ephemeral HOME so subprocesses don't touch the real home.
-        # Lives under /tmp which is already allowed read-write in the profile.
+        # Create ephemeral sandbox directories so subprocesses can't access
+        # the host's tmp or home. Uses /private/var/folders (per-user temp)
+        # as the base since it's more isolated than /tmp.
         REAL_HOME="$HOME"
-        SANDBOX_HOME=$(mktemp -d /private/tmp/sandbox-home.XXXXXX)
+        _HOST_TMPDIR=$(getconf DARWIN_USER_TEMP_DIR)
+        SANDBOX_BASE=$(mktemp -d "$_HOST_TMPDIR/sandbox.XXXXXX")
+        SANDBOX_HOME="$SANDBOX_BASE/home"
+        SANDBOX_TMPDIR="$SANDBOX_BASE/tmp"
+        mkdir -p "$SANDBOX_HOME" "$SANDBOX_TMPDIR"
 
         # Symlink state dirs/files into sandbox HOME so $HOME-relative lookups
         # reach the real paths through the Seatbelt-allowed targets.
@@ -788,6 +795,8 @@ let
         ${ancestorTraversalBashStr}
         ${ancestorProfilePatchBashStr}
 
+        # Proxy temp files go in SANDBOX_BASE so they're accessible inside the sandbox
+        _PROXY_TMPDIR="$SANDBOX_BASE"
         ${conditionalNetworkingParams.proxyStartupBashStr}
         ${conditionalNetworkingParams.bashTrapCleanupStr}
 
@@ -799,7 +808,7 @@ let
           PATH="${mergedPathStr}" \
           SSL_CERT_DIR="${pkgs.cacert}/etc/ssl/certs" \
           GIT_CONFIG_DIR="$GIT_CONFIG_DIR" \
-          TMPDIR=/tmp \
+          TMPDIR="$SANDBOX_TMPDIR" \
           ${conditionalNetworkingParams.caCertEnvInlineBashStr} \
           ${conditionalNetworkingParams.proxyEnvInlineBashStr} \
           ${extraEnvInlineStr} \
@@ -810,7 +819,7 @@ let
           -D REPO_ROOT="$REPO_ROOT" \
           -D REPO_ROOT_PARENT="$REPO_ROOT_PARENT" \
           -D GIT_CONFIG_DIR="$GIT_CONFIG_DIR" \
-          -D TMPDIR="/tmp" \
+          -D TMPDIR="$SANDBOX_TMPDIR" \
           -D HOME="$SANDBOX_HOME"  \
           -D REAL_HOME="$REAL_HOME" \
           -D HOME_CACHE="$SANDBOX_HOME/.cache" \
