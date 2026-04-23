@@ -7,8 +7,10 @@
 #   allowFilesStr         — per-stateFile allow rules  (literal, file-read/write)
 #   allowReadOnlyDirsStr  — per-roStateDir allow rules (subpath, file-read only)
 #   allowReadOnlyFilesStr — per-roStateFile allow rules (literal, file-read only)
+#   isolateNixStore       — when true, omit blanket /nix/store read rule
 { networkRulesStr, allowReadWriteExecStr, allowFilesStr
-, allowReadOnlyDirsStr ? "", allowReadOnlyFilesStr ? "" }: ''
+, allowReadOnlyDirsStr ? "", allowReadOnlyFilesStr ? ""
+, isolateNixStore ? true }: ''
   (version 1)
   (deny default)
 
@@ -103,11 +105,15 @@
 
   ;; Nix store — full read access so symlinks into the store (e.g.
   ;; home-manager-managed config files) are followable. Execution is
-  ;; still restricted to the allowed closure below.
+  ;; restricted to the allowed closure when isolateNixStore=true.
   (allow file-read-metadata
     (literal "/nix")
     (literal "/nix/store"))
   (allow file-read* (subpath "/nix/store"))
+  ${if isolateNixStore then ''
+  ;; Nix store execution — isolated: per-path rules appended by builder'' else ''
+  ;; Nix store execution — full access (isolateNixStore = false)
+  (allow process-exec (subpath "/nix/store"))''}
 
   ;; Filesystem traversal — stat() on parent dirs for path resolution.
   ;; "/" needs file-read* (process startup requires readdir on root).

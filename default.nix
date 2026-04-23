@@ -723,6 +723,7 @@ let
         allowFilesStr = seatbeltAllowFiles;
         allowReadOnlyDirsStr = seatbeltAllowReadOnlyDirs;
         allowReadOnlyFilesStr = seatbeltAllowReadOnlyFiles;
+        inherit isolateNixStore;
       };
 
       seatbeltProfile = if isolateNixStore then
@@ -743,13 +744,8 @@ let
           } > $out
         ''
       else
-        # Full nix store access — no isolation
-        pkgs.writeText "${outName}-sandbox.sb" ''
-          ${seatbeltStaticRules}
-
-              ;; Nix store — full access (isolateNixStore = false)
-              (allow process-exec (subpath "/nix/store"))
-        '';
+        # Full nix store access — exec rule is in static profile
+        pkgs.writeText "${outName}-sandbox.sb" seatbeltStaticRules;
 
     in pkgs.writeTextFile {
       name = outName;

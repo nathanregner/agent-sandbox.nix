@@ -4,9 +4,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 OS=$(uname)
 
-source "$SCRIPT_DIR/lib.sh"
+source "$SCRIPT_DIR/../lib.sh"
 
-SANDBOXED=$(nix-build --no-out-link "$SCRIPT_DIR/path-merge-sandbox.nix")
+SANDBOXED=$(nix-build --no-out-link "$SCRIPT_DIR/../fixtures/path-merge-sandbox.nix")
 SHELL="$SANDBOXED/bin/sandboxed-bash-path-merge"
 
 run() { "$SHELL" --norc --noprofile -c "$@" >/dev/null 2>&1; }

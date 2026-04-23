@@ -39,7 +39,12 @@ expect_fail "cannot read /root" "ls /root"
 
 # --- Basic access ---
 expect_ok "can write to CWD" "touch ./sandbox-test-file && rm ./sandbox-test-file"
-expect_ok "can write to /tmp" "touch /tmp/sandbox-test && rm /tmp/sandbox-test"
+if [ "$OS" = "Darwin" ]; then
+	# Darwin uses isolated TMPDIR under /private/var/folders, /tmp is blocked
+	expect_ok "can write to TMPDIR" 'touch "$TMPDIR/sandbox-test" && rm "$TMPDIR/sandbox-test"'
+else
+	expect_ok "can write to /tmp" "touch /tmp/sandbox-test && rm /tmp/sandbox-test"
+fi
 expect_ok "can read /etc/resolv.conf" "cat /etc/resolv.conf > /dev/null"
 expect_ok "can run allowed binaries" "ls / > /dev/null"
 

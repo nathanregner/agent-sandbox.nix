@@ -1,26 +1,20 @@
 #!/usr/bin/env bash
-# Tests for isolateNixStore option (Linux only)
+# Tests for isolateNixStore option
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 OS=$(uname)
 
-# Only run on Linux (isolateNixStore is Linux-only)
-if [ "$OS" != "Linux" ]; then
-	echo "Skipping no-store-isolation tests (Linux only)"
-	exit 0
-fi
-
-source "$SCRIPT_DIR/lib.sh"
+source "$SCRIPT_DIR/../lib.sh"
 
 # Build sandbox with isolateNixStore=false
-SANDBOXED=$(nix-build --no-out-link "$SCRIPT_DIR/no-store-isolation-sandbox.nix")
+SANDBOXED=$(nix-build --no-out-link "$SCRIPT_DIR/../fixtures/no-store-isolation-sandbox.nix")
 SHELL="$SANDBOXED/bin/sandboxed-bash-no-store-isolation"
 
 run() { "$SHELL" --norc --noprofile -c "$@" >/dev/null 2>&1; }
 run_output() { "$SHELL" --norc --noprofile -c "$@" 2>/dev/null; }
 
 # Also build basic sandbox (isolateNixStore=true) for comparison
-SANDBOXED_ISOLATED=$(nix-build --no-out-link "$SCRIPT_DIR/basic-sandbox.nix")
+SANDBOXED_ISOLATED=$(nix-build --no-out-link "$SCRIPT_DIR/../fixtures/basic-sandbox.nix")
 SHELL_ISOLATED="$SANDBOXED_ISOLATED/bin/sandboxed-bash"
 
 run_isolated() { "$SHELL_ISOLATED" --norc --noprofile -c "$@" >/dev/null 2>&1; }
