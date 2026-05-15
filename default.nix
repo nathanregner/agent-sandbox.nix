@@ -191,7 +191,7 @@ let
           (builtins.attrNames extraEnvWithoutPath));
       # Merge PATH: extraEnv.PATH (if any) comes first for priority
       mergedPathStr =
-        if extraEnv ? PATH then "${extraEnv.PATH}:${pathStr}" else pathStr;
+        if extraEnv ? PATH then "${pathStr}:${extraEnv.PATH}" else pathStr;
       conditionalNetworkingParams = if restrictNetwork then
         let
           allowlistFileStr = pkgs.writeText "sandbox-allowlist"
@@ -567,7 +567,7 @@ let
           (builtins.attrNames extraEnvWithoutPath));
       # Merge PATH: extraEnv.PATH (if any) comes first for priority
       mergedPathStr =
-        if extraEnv ? PATH then "${extraEnv.PATH}:${pathStr}" else pathStr;
+        if extraEnv ? PATH then "${pathStr}:${extraEnv.PATH}" else pathStr;
 
       conditionalNetworkingParams = if restrictNetwork then
         let
